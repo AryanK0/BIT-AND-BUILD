@@ -1,0 +1,177 @@
+.bg-effects {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ===== GLOW ORBS ===== */
+.bg-effects__glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(20px);
+}
+
+.bg-effects__glow--pink {
+  top: -15%;
+  right: -5%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle, rgba(255, 45, 149, 0.25) 0%, transparent 70%);
+  animation: float 12s ease-in-out infinite;
+}
+
+.bg-effects__glow--purple {
+  top: 20%;
+  left: -10%;
+  width: 40%;
+  height: 40%;
+  background: radial-gradient(circle, rgba(190, 46, 221, 0.15) 0%, transparent 70%);
+  animation: float 15s ease-in-out infinite 2s;
+}
+
+.bg-effects__glow--blue {
+  bottom: -10%;
+  right: 10%;
+  width: 35%;
+  height: 35%;
+  background: radial-gradient(circle, rgba(27, 156, 252, 0.15) 0%, transparent 70%);
+  animation: float 10s ease-in-out infinite 4s;
+}
+
+/* Compact variant for login page */
+.bg-effects--compact .bg-effects__glow--pink {
+  width: 35%;
+  height: 35%;
+  opacity: 0.8;
+}
+
+.bg-effects--compact .bg-effects__glow--purple {
+  width: 25%;
+  height: 25%;
+  opacity: 0.6;
+}
+
+.bg-effects--compact .bg-effects__glow--blue {
+  width: 20%;
+  height: 20%;
+  opacity: 0.5;
+}
+
+/* ===== VECTOR CITYSCAPE ===== */
+/* Anchored to the bottom of whatever section hosts it, faded upward with a
+   mask so the skyline dissolves into the background before it ever reaches
+   the headline / body copy above it — depth without competing for attention. */
+.bg-effects__city {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 52%;
+  min-height: 260px;
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 38%, transparent 88%);
+  mask-image: linear-gradient(to top, #000 0%, #000 38%, transparent 88%);
+}
+
+.bg-effects__city svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.bg-effects__city-layer--back {
+  color: #171744;
+  opacity: 0.55;
+  filter: blur(0.5px);
+}
+
+.bg-effects__city-layer--mid {
+  color: #0f0f2c;
+  opacity: 0.75;
+}
+
+.bg-effects__city-layer--front {
+  color: var(--color-surface);
+  opacity: 0.96;
+}
+
+.bg-effects__lit-window {
+  animation: window-twinkle 5s ease-in-out infinite;
+}
+
+@keyframes window-twinkle {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.25; }
+}
+
+/* Compact variant (login, dashboards) skips the skyline entirely — see
+   BackgroundEffects.jsx, kept lightweight for smaller, content-forward pages */
+
+@media (max-width: 720px) {
+  .bg-effects__city {
+    height: 38%;
+    min-height: 170px;
+  }
+  .bg-effects__city-layer--back {
+    display: none;
+  }
+}
+
+/* ===== COMIC DOTS ===== */
+.bg-effects__dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255, 45, 149, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ===== FLOATING PARTICLES ===== */
+.bg-effects__particles {
+  position: absolute;
+  inset: 0;
+}
+
+.bg-effects__particle {
+  position: absolute;
+  bottom: -10px;
+  width: var(--particle-size, 3px);
+  height: var(--particle-size, 3px);
+  background: var(--particle-color, #FF2D95);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--particle-color, #FF2D95);
+  animation: particle-float var(--duration, 8s) linear infinite;
+  opacity: 0;
+}
+
+/* ===== WEB STRANDS ===== */
+.bg-effects__strands {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 75%;
+  height: 100%;
+}
+
+.bg-effects__strand {
+  animation: web-pulse 4s ease-in-out infinite;
+}
+
+.bg-effects__web-ring {
+  animation: web-pulse 6s ease-in-out infinite;
+}
+
+.bg-effects__web-node {
+  animation: pulse-glow 3s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (max-width: 720px) {
+  .bg-effects__strands {
+    width: 100%;
+    opacity: 0.5;
+  }
+  .bg-effects__particle:nth-child(n+12) {
+    display: none;
+  }
+}

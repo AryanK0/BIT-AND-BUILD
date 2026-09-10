@@ -1,0 +1,7 @@
+.page-container {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding-left: var(--content-padding);
+  padding-right: var(--content-padding);
+  position: relative;
+}

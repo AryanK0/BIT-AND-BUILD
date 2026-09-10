@@ -1,0 +1,81 @@
+:root {
+  /* ===== Spider-Verse Color Palette ===== */
+  --color-bg: #090b18;
+  --color-bg-deep: #04050d;
+  --color-surface: #101326;
+  --color-surface-raised: #181c36;
+  --color-border: #30365f;
+  --color-border-glow: rgba(255, 45, 149, 0.3);
+
+  /* Primary accents */
+  --color-accent: #E50000;          /* Classic Spider-Man Red */
+  --color-accent-soft: #ff3333;
+  --color-accent-pink: #FF2D95;     /* Spider-Verse hot pink */
+  --color-accent-blue: #1B9CFC;     /* Electric blue */
+  --color-accent-purple: #BE2EDD;   /* Gwen purple */
+  --color-accent-yellow: #FFC312;   /* Glitch yellow */
+  --color-accent-cyan: #00D2FF;     /* Neon cyan */
+
+  /* Text */
+  --color-text: #f0f0ff;
+  --color-text-muted: #aeb3d4;
+  --color-text-faint: #737aa9;
+
+  /* Role colors */
+  --color-participant: #E50000;
+  --color-judge: #1B9CFC;
+  --color-organizer: #BE2EDD;
+
+  /* Type */
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-comic: 'Bangers', 'Space Grotesk', cursive;
+
+  /* Type scale */
+  --fs-hero: clamp(3.6rem, 8vw, 6.8rem);
+  --fs-h1: clamp(2.35rem, 4vw, 3.35rem);
+  --fs-h2: clamp(1.8rem, 2.8vw, 2.35rem);
+  --fs-h3: clamp(1.35rem, 2vw, 1.7rem);
+  --fs-body-lg: 1.2rem;
+  --fs-body: 1.0625rem;
+  --fs-small: 0.9375rem;
+  --fs-micro: 0.8rem;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  /* Layout */
+  --content-max-width: 1200px;
+  --content-padding: clamp(1.25rem, 4vw, 3rem);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --radius-xl: 28px;
+
+  /* Effects */
+  --glow-red: 0 0 40px rgba(229, 0, 0, 0.4), 0 0 80px rgba(229, 0, 0, 0.15);
+  --glow-pink: 0 0 40px rgba(255, 45, 149, 0.4), 0 0 80px rgba(255, 45, 149, 0.15);
+  --glow-blue: 0 0 40px rgba(27, 156, 252, 0.4), 0 0 80px rgba(27, 156, 252, 0.15);
+  --glow-purple: 0 0 40px rgba(190, 46, 221, 0.4), 0 0 80px rgba(190, 46, 221, 0.15);
+  --shadow-panel: 0 28px 80px rgba(0, 0, 0, 0.58), 0 0 1px rgba(229, 0, 0, 0.28);
+  --shadow-card: 0 14px 40px rgba(0, 0, 0, 0.38);
+  --transition-fast: 150ms ease;
+  --transition-base: 240ms ease;
+  --transition-slow: 500ms ease;
+
+  /* Gradients */
+  --gradient-spiderverse: linear-gradient(135deg, #E50000, #BE2EDD, #1B9CFC);
+  --gradient-hero: linear-gradient(135deg, rgba(229,0,0,0.15), rgba(190,46,221,0.1), rgba(27,156,252,0.15));
+  --gradient-card: linear-gradient(145deg, rgba(229,0,0,0.08), rgba(190,46,221,0.05));
+}

@@ -1,0 +1,110 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0.85rem 1.75rem;
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--transition-fast), box-shadow var(--transition-base),
+    background var(--transition-fast), border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.btn--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn--loading {
+  cursor: wait;
+}
+
+/* Primary — Spider-Verse hot pink */
+.btn--primary {
+  background: linear-gradient(110deg, var(--color-accent), #f11f4d 48%, var(--color-accent-purple));
+  color: #fff;
+}
+
+.btn--primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.btn--primary:hover {
+  box-shadow: 0 0 0 1px var(--color-accent), 0 12px 30px rgba(229, 0, 0, 0.3), var(--glow-pink);
+  transform: translateY(-2px);
+}
+
+.btn--primary:hover::before {
+  opacity: 1;
+}
+
+/* Secondary — outlined */
+.btn--secondary {
+  background: rgba(255, 45, 149, 0.08);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.btn--secondary:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-soft);
+  box-shadow: 0 0 20px rgba(255, 45, 149, 0.15);
+}
+
+/* Ghost */
+.btn--ghost {
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: 0.5rem 0.25rem;
+}
+
+.btn--ghost:hover {
+  color: var(--color-accent-soft);
+}
+
+/* Danger — for logout */
+.btn--danger {
+  background: transparent;
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+
+.btn--danger:hover {
+  border-color: #ff4444;
+  color: #ff6666;
+  background: rgba(255, 68, 68, 0.1);
+}
+
+/* Spinner inside button */
+.btn__spinner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.btn__text--hidden {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn--primary:hover {
+    transform: none;
+  }
+}

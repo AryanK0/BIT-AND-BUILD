@@ -1,0 +1,112 @@
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(10, 10, 26, 0.8);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.navbar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+  gap: var(--space-4);
+}
+
+/* Wordmark */
+.navbar__wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.navbar__wordmark:hover {
+  transform: scale(1.05);
+}
+
+.navbar__wordmark-bit,
+.navbar__wordmark-build {
+  color: var(--color-text);
+}
+
+.navbar__wordmark-amp {
+  color: var(--color-accent);
+  text-shadow: 0 0 12px rgba(255, 45, 149, 0.5);
+}
+
+/* Navigation links */
+.navbar__nav {
+  display: none;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.navbar__link {
+  color: var(--color-text-muted);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  transition: color var(--transition-fast);
+  position: relative;
+}
+
+.navbar__link::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: var(--gradient-spiderverse);
+  transition: width var(--transition-base);
+  border-radius: 1px;
+}
+
+.navbar__link:hover {
+  color: var(--color-text);
+}
+
+.navbar__link:hover::after {
+  width: 100%;
+}
+
+/* Actions */
+.navbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+.navbar__tagline {
+  color: var(--color-text-faint);
+  font-size: var(--fs-micro);
+  display: none;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+@media (min-width: 768px) {
+  .navbar__nav {
+    display: flex;
+  }
+  .navbar__tagline {
+    display: inline;
+  }
+}
+
+@media (max-width: 767px) {
+  .navbar__inner {
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
+  }
+}
