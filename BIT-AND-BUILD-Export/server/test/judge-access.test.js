@@ -2,12 +2,19 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { generateJudgePassword } from '../src/app.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const appSource = await fs.readFile(path.resolve(directory, '../src/app.js'), 'utf8');
 const migration = await fs.readFile(path.resolve(directory, '../migrations/004_multiple_judges.sql'), 'utf8');
 
 describe('one-time judge password implementation', () => {
+  test('generates a six-character password from the unambiguous allowed alphabet', () => {
+    for (let index = 0; index < 100; index += 1) {
+      expect(generateJudgePassword()).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+    }
+  });
+
   test('persists only a hash and consumes the credential in a transaction', () => {
     expect(migration).toMatch(/CREATE TABLE judges/);
     expect(migration).toMatch(/password_hash TEXT/);

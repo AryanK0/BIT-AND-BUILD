@@ -14,6 +14,7 @@ const participantLogin = z.object({ identifier: z.string().trim().min(1).max(80)
 const problemStatement = z.object({ title: z.string().trim().min(1).max(200), description: z.string().trim().min(1).max(10000), isActive: z.boolean().optional() }).strict();
 const submission = z.object({ problemStatementId: z.string().uuid(), projectTitle: z.string().trim().min(1).max(200), description: z.string().trim().min(1).max(10000), techStack: z.string().trim().max(1000).optional().or(z.literal('')), repositoryUrl: z.string().url().max(2048).optional().or(z.literal('')), deployedUrl: z.string().url().max(2048).optional().or(z.literal('')), status: z.enum(['draft', 'submitted', 'final']).optional() }).strict();
 const announcement = z.object({ title: z.string().trim().min(1).max(200), content: z.string().trim().min(1).max(10000), priority: z.enum(['normal', 'important', 'urgent']).optional() }).strict();
+const JUDGE_PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const norm = (value) => value.trim().toLowerCase();
 const errors = { 400: ['BAD_REQUEST', 'Request could not be processed'], 401: ['UNAUTHORIZED', 'Invalid login credentials'], 403: ['FORBIDDEN', 'Request is not allowed'], 404: ['NOT_FOUND', 'Not found'], 409: ['CONFLICT', 'Team name or login name already exists'], 429: ['RATE_LIMITED', 'Too many requests'], 503: ['SERVICE_UNAVAILABLE', 'Service temporarily unavailable'] };
 function fail(status) { const [code, message] = errors[status] || ['INTERNAL_ERROR', 'Internal server error']; return { error: { code, message } }; }
@@ -26,6 +27,7 @@ async function serviceUser(pool, { email, name, role, password }) {
   return (await pool.query(`INSERT INTO users (email, display_name, role, password_hash) VALUES ($1,$2,$3,$4) ON CONFLICT (email) DO UPDATE SET display_name=EXCLUDED.display_name, role=EXCLUDED.role, password_hash=EXCLUDED.password_hash, enabled=TRUE, updated_at=NOW() RETURNING id,email,display_name,role,team_id`, [norm(email), name, role, passwordHash])).rows[0];
 }
 function mapTeam(row) { return { id: row.id, team_name: row.team_name, leader_name: row.leader_name, leader_email: row.leader_email, college: row.college, created_at: row.created_at, updated_at: row.updated_at, project_title: row.project_title, project_description: row.project_description, tech_stack: row.tech_stack, github_link: row.github_link, demo_link: row.demo_link, submission_status: row.submission_status || 'not_submitted', team_members: row.team_members || [], scores: row.scores || [] }; }
+export function generateJudgePassword() { return Array.from({ length: 6 }, () => JUDGE_PASSWORD_ALPHABET[crypto.randomInt(JUDGE_PASSWORD_ALPHABET.length)]).join(''); }
 
 export function createApp({ pool, config, logger = console } = {}) {
   if (!config) throw new Error('Server configuration is required');
@@ -38,7 +40,7 @@ export function createApp({ pool, config, logger = console } = {}) {
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
   app.post('/api/auth/organizer/login', async (req, res, next) => { try { if (norm(String(req.body?.email || '')) !== norm(config.organizerEmail) || req.body?.password !== config.organizerPassword) return res.status(401).json(fail(401)); requirePool(pool); const user = await serviceUser(pool, { email: config.organizerEmail, name: 'Organizer', role: 'organizer', password: config.organizerPassword }); await establish(res, user); } catch (error) { next(error); } });
   async function issueJudgePassword(client, judge) {
-    const password = crypto.randomBytes(12).toString('hex').toUpperCase();
+    const password = generateJudgePassword();
     const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
     await client.query("UPDATE judges SET password_hash=$1,credential_status='pending',credential_issued_at=NOW(),updated_at=NOW() WHERE id=$2", [passwordHash, judge.id]);
     await client.query('DELETE FROM sessions WHERE user_id=$1', [judge.user_id]);
