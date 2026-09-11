@@ -1,7 +1,24 @@
-node_modules/
+# Environment variables
 .env
 .env.*
 !.env.example
-coverage/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Local/runtime files
 private/
-*.log
+uploads/
+
+# Vercel
+.vercel/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
