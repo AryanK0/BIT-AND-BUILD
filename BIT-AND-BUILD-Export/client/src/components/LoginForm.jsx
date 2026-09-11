@@ -7,7 +7,7 @@ import './LoginForm.css';
 const ROLES = [
   { id: 'participant', label: 'Participant', path: '/participant' },
   { id: 'judge', label: 'Judge', path: '/judge' },
-  { id: 'organizer', label: 'Organizer', path: '/organizer' },
+ { id: 'organizer', label: 'Admin', path: '/organizer' },
 ];
 
 function LoginForm() {
@@ -42,7 +42,9 @@ function LoginForm() {
       </div>
 
       <label className="login-form__field">
-        <span className="login-form__label">{isParticipant ? 'Team Login ID' : isJudge ? 'Judge ID' : 'Organizer Email'}</span>
+      <span className="login-form__label">
+  {isParticipant ? 'Team Login ID' : isJudge ? 'Judge ID' : 'Admin Email'}
+</span>
         <input type={isJudge ? 'text' : isParticipant ? 'text' : 'email'} name="identifier" autoComplete="username"
           value={identifier} onChange={(e) => setIdentifier(e.target.value)}
           placeholder={isParticipant ? 'team-name-4821' : isJudge ? 'JUDGE-001' : 'admin@bitandbuild.com'} required />

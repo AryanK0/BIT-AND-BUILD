@@ -48,9 +48,16 @@ export function AuthProvider({ children }) {
           method: 'POST',
           body: JSON.stringify({ judgeId: identifier, password }),
         });
-        setUser(data.user); setRole(data.role);
-        sessionStorage.setItem('bb_auth', JSON.stringify(data));
-        return { success: true };
+      setUser(data.user);
+setRole(data.user?.role || data.role);
+sessionStorage.setItem(
+  'bb_auth',
+  JSON.stringify({
+    user: data.user,
+    role: data.user?.role || data.role,
+  })
+);
+return { success: true };
       }
 
       if (selectedRole === 'organizer') {
@@ -58,9 +65,16 @@ export function AuthProvider({ children }) {
           method: 'POST',
           body: JSON.stringify({ email: identifier, password }),
         });
-        setUser(data.user); setRole(data.role);
-        sessionStorage.setItem('bb_auth', JSON.stringify(data));
-        return { success: true };
+setUser(data.user);
+setRole(data.user?.role || data.role);
+sessionStorage.setItem(
+  'bb_auth',
+  JSON.stringify({
+    user: data.user,
+    role: data.user?.role || data.role,
+  })
+);
+return { success: true };
       }
 
       if (isSupabaseConfigured && supabase) {

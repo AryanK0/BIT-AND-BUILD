@@ -42,7 +42,7 @@ function Landing() {
             judged by people who've shipped real products.
           </p>
           <div className="landing__hero-actions animate-on-scroll">
-            <Button to="/login" variant="primary">🔐 Login</Button>
+            <Button to="/login" variant="primary">Login</Button>
           </div>
         </PageContainer>
       </section>

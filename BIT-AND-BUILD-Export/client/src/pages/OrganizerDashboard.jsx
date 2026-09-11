@@ -44,6 +44,9 @@ function OrganizerDashboard() {
   const [message, setMessage] = useState({ text: '', type: '' });
   const [teamForm, setTeamForm] = useState({ teamName: '', leaderName: '', leaderEmail: '', college: '' });
   const [issuedCredentials, setIssuedCredentials] = useState(null);
+  const [judgePassword, setJudgePassword] = useState('');
+const [generatingJudgePassword, setGeneratingJudgePassword] = useState(false);
+const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
 
   // Announcement form
   const [annTitle, setAnnTitle] = useState('');
@@ -126,6 +129,48 @@ function OrganizerDashboard() {
     }
     setSaving(false);
   }
+  async function handleGenerateJudgePassword() {
+  setGeneratingJudgePassword(true);
+  setJudgePassword('');
+  setJudgePasswordCopied(false);
+
+  try {
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+    const response = await fetch(`${API_BASE}/api/auth/judge/generate-password`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error?.message || 'Failed to generate Judge password');
+    }
+
+    setJudgePassword(data.password);
+    showMessage('New Judge one-time password generated.');
+  } catch (err) {
+    showMessage(err.message || 'Failed to generate Judge password', 'error');
+  } finally {
+    setGeneratingJudgePassword(false);
+  }
+}
+
+async function handleCopyJudgePassword() {
+  if (!judgePassword) return;
+
+  try {
+    await navigator.clipboard.writeText(judgePassword);
+    setJudgePasswordCopied(true);
+    setTimeout(() => setJudgePasswordCopied(false), 2000);
+  } catch {
+    showMessage('Could not copy password', 'error');
+  }
+}
 
   async function handleCreateAnnouncement(e) {
     e.preventDefault();
@@ -166,6 +211,75 @@ function OrganizerDashboard() {
       {message.text && (
         <div className={`dash-message dash-message--${message.type}`}>{message.text}</div>
       )}
+      {activeTab === 'overview' && (
+  <div className="dash-section">
+    <div className="dash-welcome glass-card">
+      <h1>Judge Access ⚖️</h1>
+      <p>Generate a one-time password for the Judge account.</p>
+
+      <div style={{
+        marginTop: '24px',
+        padding: '20px',
+        borderRadius: '12px',
+        border: '1px solid rgba(255,255,255,0.1)',
+        background: 'rgba(255,255,255,0.03)'
+      }}>
+        <p>
+          <strong>Judge ID:</strong> JUDGE-001
+        </p>
+
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={handleGenerateJudgePassword}
+          disabled={generatingJudgePassword}
+        >
+          {generatingJudgePassword
+            ? 'Generating...'
+            : '🔐 Generate One-Time Password'}
+        </button>
+
+        {judgePassword && (
+          <div style={{ marginTop: '20px' }}>
+            <p>
+              <strong>One-Time Password:</strong>
+            </p>
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}>
+              <code style={{
+                fontSize: '1.2rem',
+                letterSpacing: '2px',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: 'rgba(0,0,0,0.35)'
+              }}>
+                {judgePassword}
+              </code>
+
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={handleCopyJudgePassword}
+              >
+                {judgePasswordCopied ? '✓ Copied' : '📋 Copy'}
+              </button>
+            </div>
+
+            <p className="dash-field-hint">
+              Give this password to the Judge with ID JUDGE-001.
+              It becomes invalid immediately after successful Judge login.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
 
       {loading ? (
         <div className="dash-loading"><div className="spinner" /></div>
