@@ -156,7 +156,7 @@ function setSessionCookie(res, token, config) {
   res.cookie('session', token, {
     httpOnly: true,
     secure: config.nodeEnv === 'production',
-    sameSite: 'lax',
+    sameSite: 'none',
     path: '/',
     maxAge: config.sessionTtlHours * 60 * 60 * 1000,
   });
