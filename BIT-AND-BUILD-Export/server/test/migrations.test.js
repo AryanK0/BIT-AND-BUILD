@@ -1,8 +1,18 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { hashOrganizerPassword, normalizeOrganizerEmail, validateOrganizerSeed } from '../src/scripts/seed-organizer.js';
 import { assertTestDatabaseUrl } from '../src/db/migrate.js';
 
+const directory = path.dirname(fileURLToPath(import.meta.url));
+
 describe('migration safeguards', () => {
+  test('uses an optional local env file so Render can use its injected environment', async () => {
+    const packageJson = JSON.parse(await fs.readFile(path.resolve(directory, '../package.json'), 'utf8'));
+    expect(packageJson.scripts['db:migrate']).toBe('node --env-file-if-exists=.env src/db/migrate.js');
+  });
+
   test('refuses a test migration URL that is also the deployment database URL', () => {
     expect(() => assertTestDatabaseUrl({
       testDatabaseUrl: 'postgresql://user:pass@db.example.com:5432/portal',

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node --env-file=.env src/server.js",
-    "db:migrate": "node --env-file=.env src/db/migrate.js",
+    "db:migrate": "node --env-file-if-exists=.env src/db/migrate.js",
     "test": "vitest run"
   },
   "dependencies": {
