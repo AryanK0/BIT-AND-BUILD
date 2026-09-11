@@ -105,22 +105,19 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
     const loginName = createLoginName(teamForm.teamName);
     const password = createPassword(teamForm.teamName);
     try {
-      if (isSupabaseConfigured) {
-        await createOrganizerTeam({
-          team_name: teamForm.teamName,
-          leader_email: teamForm.leaderEmail,
-          leader_name: teamForm.leaderName,
-          college: teamForm.college,
-        }, { loginName, password });
-        await loadData();
-      } else {
-        const demoTeam = {
-          id: 'demo-team-' + Date.now(), team_name: teamForm.teamName, leader_name: teamForm.leaderName,
-          leader_email: teamForm.leaderEmail, college: teamForm.college, submission_status: 'not_submitted',
-          created_at: new Date().toISOString(), team_members: [], scores: [], project_title: null,
-        };
-        setTeams((current) => [demoTeam, ...current]);
+      if (!isSupabaseConfigured) {
+        throw new Error(
+          'Team registration is unavailable because the database is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to the deployed client, then redeploy.',
+        );
       }
+
+      await createOrganizerTeam({
+        team_name: teamForm.teamName,
+        leader_email: teamForm.leaderEmail,
+        leader_name: teamForm.leaderName,
+        college: teamForm.college,
+      }, { loginName, password });
+      await loadData();
       setIssuedCredentials({ teamName: teamForm.teamName, loginName, password });
       setTeamForm({ teamName: '', leaderName: '', leaderEmail: '', college: '' });
       showMessage('Team registered. Share these credentials securely.');

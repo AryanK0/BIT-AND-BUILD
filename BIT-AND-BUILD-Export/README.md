@@ -41,7 +41,7 @@ npm run dev
 
 1. Create a Supabase project.
 2. Run `client/supabase/supabase_migration.sql` in the Supabase SQL Editor.
-3. Copy `client/.env` from the example values and set `VITE_SUPABASE_URL` and
+3. Copy `client/.env.example` to `client/.env` and set `VITE_SUPABASE_URL` and
     `VITE_SUPABASE_ANON_KEY`.
 4. Log in as the organizer, open **All Teams**, and register each team.
 5. Give each team its generated Team Login ID and password. Participants use
@@ -50,6 +50,19 @@ npm run dev
 Organizer and judge demo credentials remain configured in the frontend for the
 current prototype. Move those roles to Supabase Auth or server-side secrets
 before production deployment.
+
+## Deployment: persistent team registrations
+
+Team registrations are stored in Supabase only. In the hosting provider for
+the **client** project, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+as build-time environment variables, using the values from Supabase's API
+settings, then trigger a fresh client deployment. Vite embeds `VITE_*` values
+when it builds, so adding them without redeploying does not update the live
+site. Also run `client/supabase/supabase_migration.sql` once in the SQL Editor
+for the same Supabase project.
+
+The app now refuses a registration when this configuration is missing instead
+of showing a temporary demo team that disappears after logout or refresh.
 
 ## Phase roadmap
 
