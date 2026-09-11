@@ -4,27 +4,22 @@ import Button from '../components/Button.jsx';
 import BackgroundEffects from '../components/BackgroundEffects.jsx';
 import PageContainer from '../components/PageContainer.jsx';
 import './Landing.css';
+import './LandingEnhancements.css';
 
 function Landing() {
   const observerRef = useRef(null);
 
-  // Scroll animation observer
   useEffect(() => {
     observerRef.current = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-          }
+          if (entry.isIntersecting) entry.target.classList.add('visible');
         });
       },
       { threshold: 0.1, rootMargin: '0px 0px -50px 0px' }
     );
 
-    document.querySelectorAll('.animate-on-scroll').forEach((el) => {
-      observerRef.current.observe(el);
-    });
-
+    document.querySelectorAll('.animate-on-scroll').forEach((el) => observerRef.current.observe(el));
     return () => observerRef.current?.disconnect();
   }, []);
 
@@ -32,11 +27,10 @@ function Landing() {
     <div className="landing">
       <Navbar />
 
-      {/* ===== HERO ===== */}
       <section className="landing__hero">
         <BackgroundEffects />
         <PageContainer className="landing__hero-inner">
-          <p className="landing__eyebrow animate-on-scroll">🕸️ Annual Student Hackathon</p>
+          <p className="landing__eyebrow animate-on-scroll">🕸️ International Hackathon</p>
           <h1 className="landing__headline glitch-text" data-text="BIT & BUILD">
             BIT <span className="landing__amp">&</span> BUILD
           </h1>
@@ -48,21 +42,16 @@ function Landing() {
             judged by people who've shipped real products.
           </p>
           <div className="landing__hero-actions animate-on-scroll">
-            <Button to="/login" variant="primary">
-              🔐 Login
-            </Button>
+            <Button to="/login" variant="primary">🔐 Login</Button>
           </div>
         </PageContainer>
       </section>
 
-      {/* ===== ABOUT ===== */}
       <section className="landing__about" id="about">
         <PageContainer>
           <div className="landing__section-header animate-on-scroll">
             <span className="landing__section-tag">What is this?</span>
-            <h2 className="landing__section-title">
-              More Than a <span className="glow-text">Hackathon</span>
-            </h2>
+            <h2 className="landing__section-title">More Than a <span className="glow-text">Hackathon</span></h2>
             <p className="landing__section-desc">
               BIT & BUILD isn't just about writing code — it's about turning wild ideas into
               tangible products in record time. Think of it as a creative pressure cooker.
@@ -87,16 +76,34 @@ function Landing() {
         </PageContainer>
       </section>
 
-      {/* ===== FOOTER ===== */}
       <footer className="landing__footer">
         <PageContainer className="landing__footer-inner">
           <div className="landing__footer-brand">
             <span className="landing__footer-wordmark">BIT <span>&amp;</span> BUILD</span>
             <p>Built by students, for students.</p>
           </div>
+
           <div className="landing__footer-links">
             <a href="#about">About</a>
           </div>
+
+          <div className="landing__contact-block">
+            <span className="landing__contact-heading">POINTS OF CONTACT</span>
+            <div className="landing__contact-person">
+              <strong>SHIVAIN ARORA</strong>
+              <a href="tel:7696518189">7696518189</a>
+            </div>
+            <div className="landing__contact-person">
+              <strong>ARYAN KHURRANA</strong>
+              <a href="tel:8847529191">8847529191</a>
+            </div>
+          </div>
+
+          <div className="landing__maker-block">
+            <div className="landing__maker-photo" role="img" aria-label="Photo of Shivain Arora" />
+            <p>MADE BY : SHIVAIN ARORA</p>
+          </div>
+
           <div className="landing__footer-copy">
             <p>© 2026 BIT & BUILD. All rights reserved.</p>
           </div>

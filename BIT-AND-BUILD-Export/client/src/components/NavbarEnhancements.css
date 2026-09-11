@@ -1,0 +1,16 @@
+.navbar__inner {
+  width: 100%;
+  max-width: none;
+  padding-left: clamp(1rem, 2.5vw, 2.5rem);
+  padding-right: clamp(1rem, 2.5vw, 2.5rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.navbar__wordmark { margin-right: auto; }
+.navbar__nav { margin-left: 2rem; }
+.navbar__actions { margin-left: auto; }
+@media (max-width: 620px) {
+  .navbar__nav { display: none; }
+  .navbar__tagline { font-size: .65rem; letter-spacing: .08em; }
+}

@@ -8,6 +8,9 @@ const environmentSchema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24),
   UPLOAD_DIR: z.string().min(1),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  ORGANIZER_EMAIL: z.string().email().default('admin@bitandbuild.com'),
+  ORGANIZER_PASSWORD: z.string().min(8).default('organizer2026'),
+  JUDGE_ID: z.string().min(3).default('JUDGE-001'),
 }).strict();
 
 export function loadConfig(environment = process.env) {
@@ -19,6 +22,9 @@ export function loadConfig(environment = process.env) {
     SESSION_TTL_HOURS: environment.SESSION_TTL_HOURS,
     UPLOAD_DIR: environment.UPLOAD_DIR,
     PORT: environment.PORT,
+    ORGANIZER_EMAIL: environment.ORGANIZER_EMAIL,
+    ORGANIZER_PASSWORD: environment.ORGANIZER_PASSWORD,
+    JUDGE_ID: environment.JUDGE_ID,
   });
 
   return {
@@ -29,6 +35,9 @@ export function loadConfig(environment = process.env) {
     sessionTtlHours: values.SESSION_TTL_HOURS,
     uploadDir: values.UPLOAD_DIR,
     port: values.PORT,
+    organizerEmail: values.ORGANIZER_EMAIL,
+    organizerPassword: values.ORGANIZER_PASSWORD,
+    judgeId: values.JUDGE_ID,
   };
 }
 

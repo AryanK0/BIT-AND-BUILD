@@ -1,18 +1,19 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import DashboardShell from '../layouts/DashboardShell.jsx';
 import { isSupabaseConfigured, fetchTeams, upsertScore } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import './ParticipantDashboard.css'; /* reuse shared styles */
+import './ParticipantDashboard.css';
+import './JudgeEnhancements.css';
 
 const RUBRIC = [
-  { key: 'completeness', name: 'Completeness', weight: 20, description: 'How complete and functional is the submitted solution? Consider whether the core requirements are implemented and the demo works end-to-end.' },
-  { key: 'technical_execution', name: 'Technical Execution', weight: 20, description: 'Quality of implementation, architecture, technical depth, reliability and effective use of the chosen technologies.' },
-  { key: 'innovation_creativity', name: 'Innovation & Creativity', weight: 15, description: 'Originality of the idea, creative problem-solving and how meaningfully the solution goes beyond a basic implementation.' },
-  { key: 'applicability_scalability', name: 'Applicability & Scalability', weight: 15, description: 'Real-world usefulness, target-user value, feasibility and potential to scale or be extended.' },
-  { key: 'ui_ux', name: 'UI/UX', weight: 10, description: 'Visual quality, usability, accessibility, navigation and overall user experience.' },
-  { key: 'bonus_features', name: 'Bonus Features', weight: 10, description: 'Additional meaningful features that improve the solution beyond the core requirements.' },
-  { key: 'presentation', name: 'Presentation', weight: 5, description: 'Clarity of explanation, quality of demonstration, communication and ability to explain the solution effectively.' },
-  { key: 'work_distribution', name: 'Work Distribution', weight: 5, description: 'Evidence that the team contributed meaningfully across members and that responsibilities were reasonably distributed.' },
+  { key: 'completeness', name: 'Completeness', weight: 20 },
+  { key: 'technical_execution', name: 'Technical Execution', weight: 20 },
+  { key: 'innovation_creativity', name: 'Innovation & Creativity', weight: 15 },
+  { key: 'applicability_scalability', name: 'Applicability & Scalability', weight: 15 },
+  { key: 'ui_ux', name: 'UI/UX', weight: 10 },
+  { key: 'bonus_features', name: 'Bonus Features', weight: 10 },
+  { key: 'presentation', name: 'Presentation', weight: 5 },
+  { key: 'work_distribution', name: 'Work Distribution', weight: 5 },
 ];
 
 const EMPTY_SCORES = Object.fromEntries(RUBRIC.map(({ key }) => [key, 0]));
@@ -42,14 +43,6 @@ function normalizeExistingScore(existingScore) {
   };
 }
 
-function getStoredScore(score) {
-  const hasWeightedData = RUBRIC.some(({ key }) => Number(score[key]) > 0)
-    || Object.keys(score.weighted_scores || {}).length > 0;
-  if (hasWeightedData && score.final_score !== undefined && score.final_score !== null) return Number(score.final_score);
-  if (hasWeightedData) return calculateFinalScore(normalizeExistingScore(score));
-  return (score.innovation + score.technical + score.design + score.presentation) * 2.5;
-}
-
 function JudgeDashboard() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
@@ -69,7 +62,6 @@ function JudgeDashboard() {
       const data = await fetchTeams();
       setTeams(data);
     } else {
-      // Demo data
       setTeams([
         { id: '1', team_name: 'Web Warriors', leader_name: 'Miles Morales', leader_email: 'miles@uni.edu', college: 'Brooklyn Visions', project_title: 'Spider-Sense AI', project_description: 'An AI tool for accessibility.', tech_stack: 'React, Python, TensorFlow', submission_status: 'submitted', team_members: [{ member_name: 'Gwen Stacy', member_role: 'Design' }, { member_name: 'Peter B.', member_role: 'Backend' }], scores: [{ innovation: 9, technical: 8, design: 9, presentation: 7, judge_email: 'judge@bitandbuild.com' }] },
         { id: '2', team_name: 'Quantum Coders', leader_name: 'Peter Parker', leader_email: 'peter@mit.edu', college: 'MIT', project_title: 'WebShooter App', project_description: 'Real-time collaboration tool.', tech_stack: 'Vue, Firebase', submission_status: 'submitted', team_members: [{ member_name: 'MJ Watson', member_role: 'Frontend' }], scores: [] },
@@ -89,17 +81,6 @@ function JudgeDashboard() {
   const pendingReview = submittedTeams.filter(t => !t.scores?.some(s => s.judge_email === user?.email));
   const reviewed = submittedTeams.filter(t => t.scores?.some(s => s.judge_email === user?.email));
 
-  const leaderboard = useMemo(() => {
-    return submittedTeams
-      .map(t => {
-        const teamScores = t.scores || [];
-        if (teamScores.length === 0) return { ...t, avgScore: 0 };
-        const avgScore = teamScores.reduce((sum, score) => sum + getStoredScore(score), 0) / teamScores.length;
-        return { ...t, avgScore };
-      })
-      .sort((a, b) => b.avgScore - a.avgScore);
-  }, [teams]);
-
   function selectTeamForScoring(team) {
     setSelectedTeam(team);
     const existingScore = team.scores?.find(s => s.judge_email === user?.email);
@@ -111,6 +92,13 @@ function JudgeDashboard() {
       setComments('');
     }
     setActiveTab('scoring');
+  }
+
+  function changeScore(key, delta) {
+    setScores((prev) => ({
+      ...prev,
+      [key]: Math.max(0, Math.min(10, prev[key] + delta)),
+    }));
   }
 
   async function handleScore(e) {
@@ -132,27 +120,24 @@ function JudgeDashboard() {
           comments,
         });
       } else {
-        // Update demo data
         setTeams(prev => prev.map(t => {
-          if (t.id === selectedTeam.id) {
-            const existingIdx = (t.scores || []).findIndex(s => s.judge_email === user.email);
-            const newScores = [...(t.scores || [])];
-            const scoreObj = {
-              ...scores,
-              innovation: scores.innovation_creativity,
-              technical: scores.technical_execution,
-              design: scores.ui_ux,
-              presentation: scores.presentation,
-              weighted_scores: calculateWeightedScores(scores),
-              final_score: calculateFinalScore(scores),
-              comments,
-              judge_email: user.email,
-            };
-            if (existingIdx >= 0) newScores[existingIdx] = scoreObj;
-            else newScores.push(scoreObj);
-            return { ...t, scores: newScores };
-          }
-          return t;
+          if (t.id !== selectedTeam.id) return t;
+          const existingIdx = (t.scores || []).findIndex(s => s.judge_email === user.email);
+          const newScores = [...(t.scores || [])];
+          const scoreObj = {
+            ...scores,
+            innovation: scores.innovation_creativity,
+            technical: scores.technical_execution,
+            design: scores.ui_ux,
+            presentation: scores.presentation,
+            weighted_scores: calculateWeightedScores(scores),
+            final_score: calculateFinalScore(scores),
+            comments,
+            judge_email: user.email,
+          };
+          if (existingIdx >= 0) newScores[existingIdx] = scoreObj;
+          else newScores.push(scoreObj);
+          return { ...t, scores: newScores };
         }));
       }
       showMessage('Score submitted! ⚖️');
@@ -165,64 +150,32 @@ function JudgeDashboard() {
 
   return (
     <DashboardShell role="judge" roleLabel="Judge" activeTab={activeTab} onTabChange={setActiveTab}>
-      {message.text && (
-        <div className={`dash-message dash-message--${message.type}`}>{message.text}</div>
-      )}
-
+      {message.text && <div className={`dash-message dash-message--${message.type}`}>{message.text}</div>}
       {loading ? (
         <div className="dash-loading"><div className="spinner" /></div>
       ) : (
         <>
-          {/* OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="dash-section">
               <div className="dash-welcome glass-card">
                 <h1>Judge Panel ⚖️</h1>
                 <p>Review teams, score projects, and help determine the winners.</p>
               </div>
-
               <div className="dash-stats-grid">
-                <div className="dash-stat-card glass-card">
-                  <span className="dash-stat-icon">👥</span>
-                  <span className="dash-stat-value">{teams.length}</span>
-                  <span className="dash-stat-label">Total Teams</span>
-                </div>
-                <div className="dash-stat-card glass-card">
-                  <span className="dash-stat-icon">📦</span>
-                  <span className="dash-stat-value">{submittedTeams.length}</span>
-                  <span className="dash-stat-label">Submitted</span>
-                </div>
-                <div className="dash-stat-card glass-card">
-                  <span className="dash-stat-icon">✅</span>
-                  <span className="dash-stat-value">{reviewed.length}</span>
-                  <span className="dash-stat-label">Reviewed</span>
-                </div>
-                <div className="dash-stat-card glass-card">
-                  <span className="dash-stat-icon">⏳</span>
-                  <span className="dash-stat-value">{pendingReview.length}</span>
-                  <span className="dash-stat-label">Pending</span>
-                </div>
+                <div className="dash-stat-card glass-card"><span className="dash-stat-icon">👥</span><span className="dash-stat-value">{teams.length}</span><span className="dash-stat-label">Total Teams</span></div>
+                <div className="dash-stat-card glass-card"><span className="dash-stat-icon">📦</span><span className="dash-stat-value">{submittedTeams.length}</span><span className="dash-stat-label">Submitted</span></div>
+                <div className="dash-stat-card glass-card"><span className="dash-stat-icon">✅</span><span className="dash-stat-value">{reviewed.length}</span><span className="dash-stat-label">Reviewed</span></div>
+                <div className="dash-stat-card glass-card"><span className="dash-stat-icon">⏳</span><span className="dash-stat-value">{pendingReview.length}</span><span className="dash-stat-label">Pending</span></div>
               </div>
             </div>
           )}
 
-          {/* ALL TEAMS */}
           {activeTab === 'teams' && (
             <div className="dash-section">
               <h2 className="dash-title">All Teams & Submissions</h2>
               <div className="dash-table-wrap glass-card">
                 <table className="dash-table">
-                  <thead>
-                    <tr>
-                      <th>Team</th>
-                      <th>Leader</th>
-                      <th>College</th>
-                      <th>Project</th>
-                      <th>Status</th>
-                      <th>Members</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
+                  <thead><tr><th>Team</th><th>Leader</th><th>College</th><th>Project</th><th>Status</th><th>Members</th><th>Action</th></tr></thead>
                   <tbody>
                     {teams.map(t => (
                       <tr key={t.id}>
@@ -230,19 +183,9 @@ function JudgeDashboard() {
                         <td>{t.leader_name}</td>
                         <td>{t.college || '—'}</td>
                         <td>{t.project_title || <em style={{color: 'var(--color-text-faint)'}}>Not submitted</em>}</td>
-                        <td>
-                          <span className={`dash-priority-badge ${t.submission_status === 'submitted' ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>
-                            {t.submission_status === 'submitted' ? '✅ Submitted' : '⏳ Pending'}
-                          </span>
-                        </td>
+                        <td><span className={`dash-priority-badge ${t.submission_status === 'submitted' ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>{t.submission_status === 'submitted' ? '✅ Submitted' : '⏳ Pending'}</span></td>
                         <td>{(t.team_members?.length || 0) + 1}</td>
-                        <td>
-                          {t.submission_status === 'submitted' && (
-                            <button className="btn btn--secondary" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem'}} onClick={() => selectTeamForScoring(t)}>
-                              Score
-                            </button>
-                          )}
-                        </td>
+                        <td>{t.submission_status === 'submitted' && <button className="btn btn--secondary" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem'}} onClick={() => selectTeamForScoring(t)}>Score</button>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -251,11 +194,9 @@ function JudgeDashboard() {
             </div>
           )}
 
-          {/* SCORING */}
           {activeTab === 'scoring' && (
             <div className="dash-section">
               <h2 className="dash-title">Score Team</h2>
-
               {!selectedTeam ? (
                 <div className="dash-empty glass-card">
                   <span className="dash-empty-icon">⚖️</span>
@@ -275,61 +216,29 @@ function JudgeDashboard() {
 
                   <form className="dash-form glass-card" onSubmit={handleScore}>
                     <h3>Scoring Rubric (100 points)</h3>
-                    <div className="dash-form-grid">
+                    <div className="judge-score-list">
                       {RUBRIC.map(({ key, name }) => (
-                        <label className="dash-field" key={key}>
-                          <span><strong>{name}</strong></span>
-                          <input
-                            type="range" min="0" max="10" step="1" value={scores[key]}
-                            onChange={(e) => setScores(prev => ({ ...prev, [key]: parseInt(e.target.value, 10) }))}
-                            className="dash-range-input"
-                          />
-                          <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--color-text-faint)'}}>
-                            <span>0</span><span>5</span><span>10</span>
+                        <div className="judge-score-row" key={key}>
+                          <span className="judge-score-name"><strong>{name}</strong></span>
+                          <div className="judge-score-controls">
+                            <button type="button" className="judge-score-btn" onClick={() => changeScore(key, -1)} aria-label={`Decrease ${name}`}>−</button>
+                            <span className="judge-score-value">{scores[key]}</span>
+                            <button type="button" className="judge-score-btn" onClick={() => changeScore(key, 1)} aria-label={`Increase ${name}`}>+</button>
                           </div>
-                          <span>Judge rating: {scores[key]}/10</span>
-                        </label>
+                        </div>
                       ))}
                       <label className="dash-field dash-field--full">
                         <span>Comments</span>
                         <textarea value={comments} onChange={(e) => setComments(e.target.value)} placeholder="Feedback for the team..." rows={3} />
                       </label>
                     </div>
-                    <div style={{display: 'flex', alignItems: 'center', gap: 'var(--space-4)'}}>
-                      <button type="submit" className="btn btn--primary" disabled={saving}>
-                        {saving ? 'Submitting...' : '✅ Submit Score'}
-                      </button>
-                      <span style={{fontSize: 'var(--fs-small)', color: 'var(--color-text-muted)'}}>
-                        Weighted Score: <strong>{calculateFinalScore(scores).toFixed(1).replace(/\.0$/, '')} / 100</strong>
-                      </span>
+                    <div className="judge-score-submit">
+                      <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Submitting...' : '✅ Submit Score'}</button>
+                      <span>Weighted Score: <strong>{calculateFinalScore(scores).toFixed(1).replace(/\.0$/, '')} / 100</strong></span>
                     </div>
                   </form>
                 </>
               )}
-            </div>
-          )}
-
-          {/* LEADERBOARD */}
-          {activeTab === 'leaderboard' && (
-            <div className="dash-section">
-              <h2 className="dash-title">Leaderboard 🏆</h2>
-              <div className="dash-leaderboard">
-                {leaderboard.map((t, i) => (
-                  <div className="dash-leaderboard-item glass-card" key={t.id}>
-                    <span className="dash-leaderboard-rank" style={{color: i === 0 ? '#FFC312' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : 'var(--color-text-muted)'}}>
-                      #{i + 1}
-                    </span>
-                    <div style={{flex: 1}}>
-                      <strong>{t.team_name}</strong>
-                      <p style={{fontSize: 'var(--fs-small)', marginTop: '2px'}}>{t.project_title || 'No submission'}</p>
-                    </div>
-                    <div className="dash-leaderboard-bar">
-                      <div className="dash-leaderboard-fill" style={{width: `${(t.avgScore / 40) * 100}%`}} />
-                    </div>
-                    <span className="dash-leaderboard-score">{t.avgScore.toFixed(1)}</span>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
         </>

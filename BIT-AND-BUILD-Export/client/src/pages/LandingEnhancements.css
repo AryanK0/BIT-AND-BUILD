@@ -1,0 +1,76 @@
+/* Landing page requested layout refinements */
+.landing__footer-inner {
+  position: relative;
+  min-height: 220px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  padding-left: clamp(1.25rem, 3vw, 3rem);
+  padding-right: clamp(1.25rem, 3vw, 3rem);
+}
+
+.landing__contact-block {
+  margin-left: auto;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+}
+
+.landing__contact-heading {
+  font-family: var(--font-display);
+  font-size: var(--fs-micro);
+  letter-spacing: .14em;
+  color: var(--color-accent-cyan);
+  font-weight: 700;
+}
+
+.landing__contact-person {
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+}
+
+.landing__contact-person strong { color: var(--color-text); }
+.landing__contact-person a { color: var(--color-text-muted); }
+.landing__contact-person a:hover { color: var(--color-accent-soft); }
+
+.landing__maker-block {
+  position: absolute;
+  left: clamp(1.25rem, 3vw, 3rem);
+  bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  color: var(--color-text-faint);
+  font-family: var(--font-display);
+  font-size: var(--fs-micro);
+  letter-spacing: .06em;
+}
+
+.landing__maker-photo {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 45, 149, .55);
+  background-image: url('/shivain-photo.jpg');
+  background-size: cover;
+  background-position: center 18%;
+  box-shadow: 0 0 22px rgba(255,45,149,.2);
+}
+
+.landing__maker-block p { margin: 0; }
+.landing__footer-copy { margin-left: auto; align-self: flex-end; }
+
+@media (max-width: 760px) {
+  .landing__footer-inner {
+    min-height: 340px;
+    flex-wrap: wrap;
+  }
+  .landing__contact-block { margin-left: 0; text-align: left; }
+  .landing__footer-copy { width: 100%; margin-left: 0; }
+}
