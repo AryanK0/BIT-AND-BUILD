@@ -16,6 +16,7 @@ const NAV_ITEMS = {
     { id: 'scoring', label: 'Scoring', icon: '⚖️' },
   ],
   organizer: [
+    { id: 'judges', label: 'Judges', icon: '⚖️' },
     { id: 'problems', label: 'Problems', icon: '🧩' },
     { id: 'overview', label: 'Overview', icon: '🏠' },
     { id: 'teams', label: 'All Teams', icon: '👥' },

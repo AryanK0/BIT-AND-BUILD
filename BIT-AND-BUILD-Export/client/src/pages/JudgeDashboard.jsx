@@ -198,7 +198,7 @@ function JudgeDashboard() {
                     </div>
                     <div className="judge-score-submit">
                       <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Submitting...' : '✅ Submit Score'}</button>
-                      <span>Weighted Score: <strong>{calculateFinalScore(scores).toFixed(1).replace(/\.0$/, '')} / 100</strong></span>
+                      <span>Score: <strong>{calculateFinalScore(scores).toFixed(1).replace(/\.0$/, '')} / 100</strong></span>
                     </div>
                   </form>
                 </>

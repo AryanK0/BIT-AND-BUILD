@@ -41,6 +41,9 @@ function OrganizerDashboard() {
   const [announcements, setAnnouncements] = useState([]);
   const [problemStatements, setProblemStatements] = useState([]);
   const [problemForm, setProblemForm] = useState({ id: '', title: '', description: '', isActive: true });
+  const [judges, setJudges] = useState([]);
+  const [judgeActivity, setJudgeActivity] = useState([]);
+  const [activityJudgeFilter, setActivityJudgeFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
@@ -75,6 +78,14 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
       const problemsBody = await problemsResponse.json();
       if (!problemsResponse.ok) throw new Error(problemsBody?.error?.message || 'Failed to load problem statements');
       setProblemStatements(problemsBody.problemStatements || []);
+      const judgesResponse = await fetch(`${API_BASE}/api/admin/judges`, { credentials: 'include' });
+      const judgesBody = await judgesResponse.json();
+      if (!judgesResponse.ok) throw new Error(judgesBody?.error?.message || 'Failed to load judges');
+      setJudges(judgesBody.judges || []);
+      const activityResponse = await fetch(`${API_BASE}/api/admin/judge-scoring`, { credentials: 'include' });
+      const activityBody = await activityResponse.json();
+      if (!activityResponse.ok) throw new Error(activityBody?.error?.message || 'Failed to load judge activity');
+      setJudgeActivity(activityBody.activity || []);
     } catch (error) { showMessage(error.message, 'error'); }
     setLoading(false);
   }
@@ -159,6 +170,45 @@ async function handleCopyJudgePassword() {
   }
 }
 
+  async function createJudge() {
+    setGeneratingJudgePassword(true); setJudgePassword(''); setJudgePasswordCopied(false);
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/judges`, { method: 'POST', credentials: 'include' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to create Judge');
+      setJudgePassword(body.password);
+      await loadData();
+      showMessage(`${body.judge.judgeId} created. Copy the one-time password now.`);
+    } catch (error) { showMessage(error.message, 'error'); }
+    setGeneratingJudgePassword(false);
+  }
+
+  async function regenerateJudgePassword(judgeId) {
+    setGeneratingJudgePassword(true); setJudgePassword(''); setJudgePasswordCopied(false);
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/judges/${encodeURIComponent(judgeId)}/regenerate-password`, { method: 'POST', credentials: 'include' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to regenerate password');
+      setJudgePassword(body.password);
+      await loadData();
+      showMessage(`Password regenerated for ${body.judgeId}.`);
+    } catch (error) { showMessage(error.message, 'error'); }
+    setGeneratingJudgePassword(false);
+  }
+
+  async function handleDeleteTeam(team) {
+    if (!window.confirm(`Delete Team? ${team.team_name} and its associated submission and scores will be removed.`)) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/teams/${team.id}`, { method: 'DELETE', credentials: 'include' });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body?.error?.message || 'Failed to delete team'); }
+      if (expandedTeam?.id === team.id) setExpandedTeam(null);
+      await loadData();
+      showMessage('Team deleted.');
+    } catch (error) { showMessage(error.message, 'error'); }
+    setSaving(false);
+  }
+
   async function handleCreateAnnouncement(e) {
     e.preventDefault();
     setSaving(true);
@@ -221,7 +271,7 @@ async function handleCopyJudgePassword() {
       {message.text && (
         <div className={`dash-message dash-message--${message.type}`}>{message.text}</div>
       )}
-      {activeTab === 'overview' && (
+      {false && (
   <div className="dash-section">
     <div className="dash-welcome glass-card">
       <h1>Judge Access ⚖️</h1>
@@ -328,6 +378,31 @@ async function handleCopyJudgePassword() {
             </div>
           )}
 
+          {activeTab === 'judges' && (
+            <div className="dash-section">
+              <div className="dash-welcome glass-card">
+                <h1>Judge Management</h1>
+                <p>Create independent Judge accounts and issue one-time login passwords.</p>
+                <button type="button" className="btn btn--primary" onClick={createJudge} disabled={generatingJudgePassword}>
+                  {generatingJudgePassword ? 'Creating...' : 'Create Judge'}
+                </button>
+                {judgePassword && <div className="dash-notice" style={{ marginTop: 'var(--space-4)' }}>
+                  <p><strong>One-time password:</strong> <code>{judgePassword}</code></p>
+                  <button type="button" className="btn btn--secondary" onClick={handleCopyJudgePassword}>{judgePasswordCopied ? 'Copied' : 'Copy password'}</button>
+                  <p className="dash-field-hint">Share this once with the Judge. It is invalidated immediately after a successful login.</p>
+                </div>}
+              </div>
+              <div className="dash-table-wrap glass-card" style={{ marginTop: 'var(--space-4)' }}>
+                <table className="dash-table"><thead><tr><th>Judge ID</th><th>Credential status</th><th>Last login</th><th>Scores submitted</th><th>Password action</th></tr></thead><tbody>
+                  {judges.map((judge) => <tr key={judge.id}><td><strong>{judge.judgeId}</strong></td><td>{judge.credentialStatus === 'pending' ? 'Active — not used' : judge.credentialStatus === 'consumed' ? 'Used' : 'No credential'}</td><td>{judge.lastLoginAt ? new Date(judge.lastLoginAt).toLocaleString() : '—'}</td><td>{judge.scores?.length || 0}</td><td><button type="button" className="btn btn--secondary" disabled={generatingJudgePassword} onClick={() => regenerateJudgePassword(judge.judgeId)}>Regenerate</button></td></tr>)}
+                </tbody></table>
+              </div>
+              <h2 className="dash-title" style={{ marginTop: 'var(--space-6)' }}>Judge Scoring Activity</h2>
+              <label className="dash-field" style={{ maxWidth: '18rem' }}><span>Filter by Judge</span><select value={activityJudgeFilter} onChange={(e) => setActivityJudgeFilter(e.target.value)}><option value="">All Judges</option>{judges.map((judge) => <option key={judge.id} value={judge.judgeId}>{judge.judgeId}</option>)}</select></label>
+              <div className="dash-table-wrap glass-card"><table className="dash-table"><thead><tr><th>Judge ID</th><th>Team</th><th>Score</th><th>Scored at</th></tr></thead><tbody>{judgeActivity.filter((item) => !activityJudgeFilter || item.judgeId === activityJudgeFilter).map((item) => <tr key={`${item.judgeId}-${item.teamId}`}><td>{item.judgeId}</td><td>{item.teamName}</td><td>{item.score} / 100</td><td>{new Date(item.scoredAt).toLocaleString()}</td></tr>)}</tbody></table></div>
+            </div>
+          )}
+
           {/* ALL TEAMS */}
           {activeTab === 'teams' && (
             <div className="dash-section">
@@ -365,7 +440,7 @@ async function handleCopyJudgePassword() {
                       <th>Members</th>
                       <th>Status</th>
                       <th>Registered</th>
-                      <th>Details</th>
+                      <th>Details</th><th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -392,6 +467,7 @@ async function handleCopyJudgePassword() {
                             {expandedTeam?.id === t.id ? 'Close' : 'View'}
                           </button>
                         </td>
+                        <td><button type="button" className="btn btn--secondary" style={{padding: '0.3rem 0.6rem', fontSize: '0.75rem'}} onClick={() => handleDeleteTeam(t)} disabled={saving}>Delete</button></td>
                       </tr>
                     ))}
                   </tbody>

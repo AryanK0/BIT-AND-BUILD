@@ -59,7 +59,7 @@ function LoginForm() {
       {error && <div className="login-form__error" role="alert"><span className="login-form__error-icon">⚠️</span>{error}</div>}
       <Button type="submit" variant="primary" loading={loading}>Log in as {ROLES.find((r) => r.id === role)?.label}</Button>
       <p className="login-form__hint">
-        {isParticipant ? '🔑 Use the team login details provided by the organizer' : isJudge ? '🔐 Ask the organizer for the current one-time password' : '🔒 Organizer credentials required'}
+        {isParticipant ? '🔑 Use the team login details provided by the Admin' : isJudge ? '🔐 Ask the Admin for the current one-time password' : '🔒 Admin credentials required'}
       </p>
     </form>
   );

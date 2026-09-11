@@ -92,7 +92,7 @@ return { success: true };
     }
   }, []);
 
-  const signup = useCallback(async () => ({ success: false, error: 'Participant accounts are created by the organizer.' }), []);
+  const signup = useCallback(async () => ({ success: false, error: 'Participant accounts are created by the Admin.' }), []);
 
   const logout = useCallback(async () => {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* local cleanup still happens */ }

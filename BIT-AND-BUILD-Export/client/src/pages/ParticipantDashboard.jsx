@@ -211,7 +211,7 @@ function ParticipantDashboard() {
 
               {!team ? (
                 <div className="dash-notice glass-card">
-                  <h3>Team registration is managed by the organizer.</h3>
+                  <h3>Team registration is managed by the Admin.</h3>
                   <p>Use the team login ID and password provided to your team. Your team workspace will appear here once it is registered.</p>
                 </div>
               ) : (
