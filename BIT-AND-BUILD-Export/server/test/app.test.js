@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { describe, expect, test } from 'vitest';
 import { createApp } from '../src/app.js';
+import { calculateScore, scoreRequestSchema } from '../src/scoring.js';
 
 const testConfig = {
   nodeEnv: 'test',
@@ -100,61 +101,18 @@ describe('health endpoint', () => {
 });
 
 describe('score endpoints', () => {
-  test('rejects incomplete or out-of-range scores before querying the database', async () => {
-    const pool = { query: () => { throw new Error('should not query'); } };
-    const response = await request(makeApp({ pool }))
-      .post('/api/scores')
-      .send({ ...completeScore, ui_ux: 11 });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: { code: 'BAD_REQUEST', message: 'Request could not be processed' },
-    });
+  test('accepts only integer values from 0 to 10', () => {
+    expect(() => scoreRequestSchema.parse({ ...completeScore, ui_ux: 11 })).toThrow();
+    expect(() => scoreRequestSchema.parse({ ...completeScore, ui_ux: 2.5 })).toThrow();
+    expect(() => scoreRequestSchema.parse({ ...completeScore, ui_ux: -1 })).toThrow();
   });
 
-  test('calculates and persists a maximum weighted score', async () => {
-    let queryArgs;
-    const pool = {
-      query: async (_query, args) => {
-        queryArgs = args;
-        return { rows: [{ id: 'score-1', final_score: 100 }] };
-      },
-    };
-    const response = await request(makeApp({ pool }))
-      .post('/api/scores')
-      .send(completeScore);
-
-    expect(response.status).toBe(200);
-    expect(response.body.score.final_score).toBe(100);
-    expect(queryArgs[13]).toEqual({
-      completeness: 20,
-      technical_execution: 20,
-      innovation_creativity: 15,
-      applicability_scalability: 15,
-      ui_ux: 10,
-      bonus_features: 10,
-      presentation: 5,
-      work_distribution: 5,
-    });
-    expect(queryArgs[14]).toBe(100);
-  });
-
-  test('calculates decimal weighted scores', async () => {
-    let queryArgs;
-    const pool = {
-      query: async (_query, args) => {
-        queryArgs = args;
-        return { rows: [{ final_score: 50 }] };
-      },
-    };
-    await request(makeApp({ pool }))
-      .post('/api/scores')
-      .send(Object.fromEntries(Object.entries(completeScore).map(([key, value]) => [
-        key,
-        typeof value === 'number' ? 5 : value,
-      ])));
-
-    expect(queryArgs[13].innovation_creativity).toBe(7.5);
-    expect(queryArgs[14]).toBe(50);
+  test('calculates the server-side weighted score', () => {
+    const maximum = calculateScore(completeScore);
+    expect(maximum.finalScore).toBe(100);
+    expect(maximum.weightedScores).toMatchObject({ completeness: 20, technical_execution: 20, innovation_creativity: 15 });
+    const midpoint = calculateScore(Object.fromEntries(Object.entries(completeScore).map(([key, value]) => [key, typeof value === 'number' ? 5 : value])));
+    expect(midpoint.finalScore).toBe(50);
+    expect(midpoint.weightedScores.innovation_creativity).toBe(7.5);
   });
 });

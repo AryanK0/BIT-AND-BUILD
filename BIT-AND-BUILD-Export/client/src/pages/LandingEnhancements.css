@@ -57,9 +57,11 @@
   flex: 0 0 54px;
   border-radius: 50%;
   border: 1px solid rgba(255, 45, 149, .55);
-  background-image: url('/shivain-photo.jpg');
-  background-size: cover;
-  background-position: center 18%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, rgba(255,45,149,.35), rgba(27,156,252,.35));
+  color: var(--color-text);
+  font-weight: 800;
   box-shadow: 0 0 22px rgba(255,45,149,.2);
 }
 

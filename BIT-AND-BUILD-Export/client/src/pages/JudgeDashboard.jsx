@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import DashboardShell from '../layouts/DashboardShell.jsx';
-import { isSupabaseConfigured, fetchTeams, upsertScore } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import './ParticipantDashboard.css';
 import './JudgeEnhancements.css';
@@ -45,6 +44,7 @@ function normalizeExistingScore(existingScore) {
 
 function JudgeDashboard() {
   const { user } = useAuth();
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
   const [activeTab, setActiveTab] = useState('overview');
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,17 +58,12 @@ function JudgeDashboard() {
 
   async function loadData() {
     setLoading(true);
-    if (isSupabaseConfigured) {
-      const data = await fetchTeams();
-      setTeams(data);
-    } else {
-      setTeams([
-        { id: '1', team_name: 'Web Warriors', leader_name: 'Miles Morales', leader_email: 'miles@uni.edu', college: 'Brooklyn Visions', project_title: 'Spider-Sense AI', project_description: 'An AI tool for accessibility.', tech_stack: 'React, Python, TensorFlow', submission_status: 'submitted', team_members: [{ member_name: 'Gwen Stacy', member_role: 'Design' }, { member_name: 'Peter B.', member_role: 'Backend' }], scores: [{ innovation: 9, technical: 8, design: 9, presentation: 7, judge_email: 'judge@bitandbuild.com' }] },
-        { id: '2', team_name: 'Quantum Coders', leader_name: 'Peter Parker', leader_email: 'peter@mit.edu', college: 'MIT', project_title: 'WebShooter App', project_description: 'Real-time collaboration tool.', tech_stack: 'Vue, Firebase', submission_status: 'submitted', team_members: [{ member_name: 'MJ Watson', member_role: 'Frontend' }], scores: [] },
-        { id: '3', team_name: 'Noir Devs', leader_name: 'Spider Noir', leader_email: 'noir@edu.in', college: 'Shadow U', project_title: 'Dark Mode Everything', project_description: 'Browser extension for perfect dark mode.', tech_stack: 'JavaScript, Chrome API', submission_status: 'submitted', team_members: [], scores: [] },
-        { id: '4', team_name: 'Peni\'s Lab', leader_name: 'Peni Parker', leader_email: 'peni@future.edu', college: 'Neo Tokyo Tech', project_title: null, project_description: null, submission_status: 'not_submitted', team_members: [{ member_name: 'SP//dr', member_role: 'AI' }], scores: [] },
-      ]);
-    }
+    try {
+      const response = await fetch(`${API_BASE}/api/judge/submissions`, { credentials: 'include' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to load submissions');
+      setTeams((body.submissions || []).map((item) => ({ ...item, id: item.team_id, project_title: item.title, project_description: item.description, github_link: item.repository_url, demo_link: item.deployed_url, submission_status: item.status, team_members: [], score: item.score_id ? item : null })));
+    } catch (error) { showMessage(error.message, 'error'); }
     setLoading(false);
   }
 
@@ -78,12 +73,12 @@ function JudgeDashboard() {
   }
 
   const submittedTeams = teams.filter(t => t.submission_status === 'submitted');
-  const pendingReview = submittedTeams.filter(t => !t.scores?.some(s => s.judge_email === user?.email));
-  const reviewed = submittedTeams.filter(t => t.scores?.some(s => s.judge_email === user?.email));
+  const pendingReview = submittedTeams.filter(t => !t.score);
+  const reviewed = submittedTeams.filter(t => t.score);
 
   function selectTeamForScoring(team) {
     setSelectedTeam(team);
-    const existingScore = team.scores?.find(s => s.judge_email === user?.email);
+    const existingScore = team.score;
     if (existingScore) {
       setScores(normalizeExistingScore(existingScore));
       setComments(existingScore.comments || '');
@@ -106,42 +101,11 @@ function JudgeDashboard() {
     if (!selectedTeam) return;
     setSaving(true);
     try {
-      if (isSupabaseConfigured) {
-        await upsertScore({
-          team_id: selectedTeam.id,
-          judge_email: user.email,
-          innovation: scores.innovation_creativity,
-          technical: scores.technical_execution,
-          design: scores.ui_ux,
-          presentation: scores.presentation,
-          ...scores,
-          weighted_scores: calculateWeightedScores(scores),
-          final_score: calculateFinalScore(scores),
-          comments,
-        });
-      } else {
-        setTeams(prev => prev.map(t => {
-          if (t.id !== selectedTeam.id) return t;
-          const existingIdx = (t.scores || []).findIndex(s => s.judge_email === user.email);
-          const newScores = [...(t.scores || [])];
-          const scoreObj = {
-            ...scores,
-            innovation: scores.innovation_creativity,
-            technical: scores.technical_execution,
-            design: scores.ui_ux,
-            presentation: scores.presentation,
-            weighted_scores: calculateWeightedScores(scores),
-            final_score: calculateFinalScore(scores),
-            comments,
-            judge_email: user.email,
-          };
-          if (existingIdx >= 0) newScores[existingIdx] = scoreObj;
-          else newScores.push(scoreObj);
-          return { ...t, scores: newScores };
-        }));
-      }
+      const response = await fetch(`${API_BASE}/api/scores`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ team_id: selectedTeam.id, ...scores, comments }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to submit score');
       showMessage('Score submitted! ⚖️');
-      if (isSupabaseConfigured) await loadData();
+      await loadData();
     } catch (err) {
       showMessage(err.message || 'Failed to submit score', 'error');
     }
@@ -215,7 +179,7 @@ function JudgeDashboard() {
                   </div>
 
                   <form className="dash-form glass-card" onSubmit={handleScore}>
-                    <h3>Scoring Rubric (100 points)</h3>
+                    <h3>Scoring</h3>
                     <div className="judge-score-list">
                       {RUBRIC.map(({ key, name }) => (
                         <div className="judge-score-row" key={key}>

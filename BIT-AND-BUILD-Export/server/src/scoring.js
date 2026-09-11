@@ -13,7 +13,6 @@ export const RUBRIC = [
 
 export const scoreRequestSchema = z.object({
   team_id: z.string().uuid(),
-  judge_email: z.string().email(),
   completeness: z.number().int().min(0).max(10),
   technical_execution: z.number().int().min(0).max(10),
   innovation_creativity: z.number().int().min(0).max(10),
@@ -38,7 +37,6 @@ export function toDatabaseScore(payload) {
   const { weightedScores, finalScore } = calculateScore(payload);
   return {
     teamId: payload.team_id,
-    judgeEmail: payload.judge_email.trim().toLowerCase(),
     completeness: payload.completeness,
     technicalExecution: payload.technical_execution,
     innovationCreativity: payload.innovation_creativity,

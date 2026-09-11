@@ -1,16 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import DashboardShell from '../layouts/DashboardShell.jsx';
-import { isSupabaseConfigured, fetchMyTeam, updateTeam, addTeamMember, removeTeamMember, fetchAnnouncements } from '../lib/supabase.js';
 import './ParticipantDashboard.css';
-
-const PROBLEM_STATEMENTS = [
-  { id: 'ps-1', label: 'Problem Statement 1', title: 'Your first challenge will appear here.', description: 'Organizer placeholder: add the first problem statement details before the hackathon begins.' },
-  { id: 'ps-2', label: 'Problem Statement 2', title: 'Your second challenge will appear here.', description: 'Organizer placeholder: add the second problem statement details before the hackathon begins.' },
-];
 
 function ParticipantDashboard() {
   const { user } = useAuth();
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
   const [activeTab, setActiveTab] = useState('overview');
   const [team, setTeam] = useState(null);
   const [announcements, setAnnouncements] = useState([]);
@@ -30,6 +25,7 @@ function ParticipantDashboard() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [selectedProblemStatement, setSelectedProblemStatement] = useState(null);
+  const [problemStatements, setProblemStatements] = useState([]);
 
   useEffect(() => {
     loadData();
@@ -37,8 +33,11 @@ function ParticipantDashboard() {
 
   async function loadData() {
     setLoading(true);
-    if (isSupabaseConfigured && (user?.teamId || user?.id)) {
-      const myTeam = await fetchMyTeam(user.teamId || user.id);
+    try {
+      const response = await fetch(`${API_BASE}/api/teams/me`, { credentials: 'include' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to load your team');
+      const myTeam = body.team;
       if (myTeam) {
         setTeam(myTeam);
         setProjectTitle(myTeam.project_title || '');
@@ -47,29 +46,27 @@ function ParticipantDashboard() {
         setGithubLink(myTeam.github_link || '');
         setDemoLink(myTeam.demo_link || '');
       }
-      const anns = await fetchAnnouncements();
-      setAnnouncements(anns);
-    } else if (!isSupabaseConfigured && user?.teamId === 'demo-team-web-warriors') {
-      setTeam({
-        id: 'demo-team-web-warriors',
-        team_name: 'Web Warriors',
-        leader_name: 'Demo Team Leader',
-        leader_email: 'web-warriors-demo',
-        college: 'BIT & BUILD Demo Campus',
-        submission_status: 'not_submitted',
-        project_title: null,
-        project_description: null,
-        tech_stack: '',
-        github_link: '',
-        demo_link: '',
-        team_members: [
-          { id: 'demo-member-1', member_name: 'Demo Teammate', member_email: 'teammate@demo.local', member_role: 'Frontend' },
-        ],
-      });
-      setAnnouncements([
-        { id: 'demo-announcement-1', title: 'Welcome to BIT & BUILD!', content: 'Your organizer has registered this demo team. Explore the workspace and prepare your submission.', priority: 'important', created_at: new Date().toISOString() },
+      const announcementsResponse = await fetch(`${API_BASE}/api/announcements`, { credentials: 'include' });
+      const announcementsBody = await announcementsResponse.json();
+      if (!announcementsResponse.ok) throw new Error(announcementsBody?.error?.message || 'Failed to load announcements');
+      setAnnouncements(announcementsBody.announcements || []);
+      const [problemsResponse, submissionsResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/problem-statements`, { credentials: 'include' }),
+        fetch(`${API_BASE}/api/submissions/me`, { credentials: 'include' }),
       ]);
-    }
+      const problemsBody = await problemsResponse.json();
+      const submissionsBody = await submissionsResponse.json();
+      if (problemsResponse.ok) {
+        setProblemStatements(problemsBody.problemStatements || []);
+        setSelectedProblemStatement((current) => current || problemsBody.problemStatements?.[0]?.id || null);
+      }
+      const savedSubmission = submissionsBody.submissions?.[0];
+      if (submissionsResponse.ok && savedSubmission) {
+        setProjectTitle(savedSubmission.title || ''); setProjectDesc(savedSubmission.description || '');
+        setGithubLink(savedSubmission.repository_url || ''); setDemoLink(savedSubmission.deployed_url || '');
+        setSelectedProblemStatement(savedSubmission.problem_statement_id);
+      }
+    } catch (error) { showMessage(error.message, 'error'); }
     setLoading(false);
   }
 
@@ -87,17 +84,7 @@ function ParticipantDashboard() {
     }
     setSaving(true);
     try {
-      await addTeamMember({
-        team_id: team.id,
-        member_name: memberName,
-        member_email: memberEmail,
-        member_role: memberRole,
-      });
-      setMemberName('');
-      setMemberEmail('');
-      setMemberRole('');
-      await loadData();
-      showMessage('Member added!');
+      showMessage('Team members are managed by Admin.', 'error');
     } catch (err) {
       showMessage(err.message || 'Failed to add member', 'error');
     }
@@ -107,9 +94,7 @@ function ParticipantDashboard() {
   async function handleRemoveMember(id) {
     setSaving(true);
     try {
-      await removeTeamMember(id);
-      await loadData();
-      showMessage('Member removed');
+      showMessage('Team members are managed by Admin.', 'error');
     } catch (err) {
       showMessage(err.message || 'Failed to remove', 'error');
     }
@@ -121,14 +106,8 @@ function ParticipantDashboard() {
     if (!team) return;
     setSaving(true);
     try {
-      await updateTeam(team.id, {
-        project_title: projectTitle,
-        project_description: projectDesc,
-        tech_stack: techStack,
-        github_link: githubLink,
-        demo_link: demoLink,
-        submission_status: 'submitted',
-      });
+      const response = await fetch(`${API_BASE}/api/submissions`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ problemStatementId: selectedProblemStatement, projectTitle, description: projectDesc, techStack, repositoryUrl: githubLink, deployedUrl: demoLink, status: 'submitted' }) });
+      const body = await response.json(); if (!response.ok) throw new Error(body?.error?.message || 'Submission failed');
       await loadData();
       showMessage('Project submitted successfully! 🎉');
     } catch (err) {
@@ -142,13 +121,8 @@ function ParticipantDashboard() {
     if (!team) return;
     setSaving(true);
     try {
-      await updateTeam(team.id, {
-        project_title: projectTitle,
-        project_description: projectDesc,
-        tech_stack: techStack,
-        github_link: githubLink,
-        demo_link: demoLink,
-      });
+      const response = await fetch(`${API_BASE}/api/submissions`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ problemStatementId: selectedProblemStatement, projectTitle, description: projectDesc, techStack, repositoryUrl: githubLink, deployedUrl: demoLink, status: 'draft' }) });
+      const body = await response.json(); if (!response.ok) throw new Error(body?.error?.message || 'Save failed');
       showMessage('Draft saved!');
     } catch (err) {
       showMessage(err.message || 'Save failed', 'error');
@@ -198,12 +172,12 @@ function ParticipantDashboard() {
                   <p className="dash-field-hint">Select one challenge to work on during the hackathon.</p>
                 </div>
                 <div className="dash-problem-grid">
-                  {PROBLEM_STATEMENTS.map((statement) => (
+                  {problemStatements.map((statement, index) => (
                     <article
                       className={`dash-problem-card glass-card ${selectedProblemStatement === statement.id ? 'dash-problem-card--selected' : ''}`}
                       key={statement.id}
                     >
-                      <span className="dash-problem-label">{statement.label}</span>
+                      <span className="dash-problem-label">Problem Statement {index + 1}</span>
                       <h3>{statement.title}</h3>
                       <p>{statement.description}</p>
                       <button
@@ -211,20 +185,20 @@ function ParticipantDashboard() {
                         className="btn btn--secondary"
                         onClick={() => {
                           setSelectedProblemStatement(statement.id);
-                          showMessage(`${statement.label} selected`);
+                          showMessage(`Problem Statement ${index + 1} selected`);
                         }}
                       >
-                        {selectedProblemStatement === statement.id ? 'Selected' : `Select ${statement.label}`}
+                        {selectedProblemStatement === statement.id ? 'Selected' : 'Select'}
                       </button>
                     </article>
                   ))}
                 </div>
               </div>
 
-              {!isSupabaseConfigured && (
+              {false && (
                 <div className="dash-notice glass-card">
                   <h3>⚠️ Database Not Connected</h3>
-                  <p>Supabase is not configured. To enable team registration, submissions, and data persistence, add your Supabase credentials to the <code>.env</code> file.</p>
+                  <p>Team data is loaded securely from the BIT &amp; BUILD backend.</p>
                 </div>
               )}
             </div>

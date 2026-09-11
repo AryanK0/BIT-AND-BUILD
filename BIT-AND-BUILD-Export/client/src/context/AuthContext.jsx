@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, isSupabaseConfigured, authenticateTeam } from '../lib/supabase.js';
 
 const AuthContext = createContext(null);
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -34,7 +33,7 @@ export function AuthProvider({ children }) {
     api('/api/auth/me')
       .then((data) => {
         setUser(data.user);
-        setRole(data.role);
+        setRole(data.user?.role);
         sessionStorage.setItem('bb_auth', JSON.stringify(data));
       })
       .catch(() => {})
@@ -77,16 +76,17 @@ sessionStorage.setItem(
 return { success: true };
       }
 
-      if (isSupabaseConfigured && supabase) {
-        const account = await authenticateTeam(identifier, password);
-        if (!account) return { success: false, error: 'Invalid team credentials. Ask the organizer for your login details.' };
-        const u = { id: account.team.id, email: account.loginName, name: account.team.team_name, teamId: account.team.id };
-        setUser(u); setRole('participant');
+      if (selectedRole === 'participant') {
+        const data = await api('/api/auth/participant/login', {
+          method: 'POST', body: JSON.stringify({ identifier, password }),
+        });
+        const u = data.user;
+        setUser(u); setRole(u.role);
         sessionStorage.setItem('bb_auth', JSON.stringify({ user: u, role: 'participant' }));
         return { success: true };
       }
 
-      return { success: false, error: 'Participant login requires the configured backend/Supabase team account.' };
+      return { success: false, error: 'Unsupported login role.' };
     } catch (error) {
       return { success: false, error: error.message || 'Login failed' };
     }
@@ -96,7 +96,6 @@ return { success: true };
 
   const logout = useCallback(async () => {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* local cleanup still happens */ }
-    if (isSupabaseConfigured && supabase && role === 'participant') await supabase.auth.signOut().catch(() => {});
     setUser(null); setRole(null); sessionStorage.removeItem('bb_auth');
   }, [role]);
 

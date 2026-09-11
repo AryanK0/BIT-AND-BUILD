@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import DashboardShell from '../layouts/DashboardShell.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import { isSupabaseConfigured, fetchTeams, fetchAnnouncements, createAnnouncement, deleteAnnouncement, createOrganizerTeam } from '../lib/supabase.js';
 import './ParticipantDashboard.css'; /* reuse shared styles */
 
 function getScoreTotal(score) {
@@ -36,9 +35,12 @@ const SCHEDULE = [
 
 function OrganizerDashboard() {
   const { user } = useAuth();
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
   const [activeTab, setActiveTab] = useState('overview');
   const [teams, setTeams] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [problemStatements, setProblemStatements] = useState([]);
+  const [problemForm, setProblemForm] = useState({ id: '', title: '', description: '', isActive: true });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
@@ -60,23 +62,20 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
 
   async function loadData() {
     setLoading(true);
-    if (isSupabaseConfigured) {
-      const [teamsData, annsData] = await Promise.all([fetchTeams(), fetchAnnouncements()]);
-      setTeams(teamsData);
-      setAnnouncements(annsData);
-    } else {
-      // Demo data
-      setTeams([
-        { id: '1', team_name: 'Web Warriors', leader_name: 'Miles Morales', leader_email: 'miles@uni.edu', college: 'Brooklyn Visions', project_title: 'Spider-Sense AI', project_description: 'An AI accessibility tool that uses computer vision to detect obstacles.', tech_stack: 'React, Python, TensorFlow', github_link: 'https://github.com/miles/spider-sense', demo_link: 'https://spider-sense.vercel.app', submission_status: 'submitted', created_at: '2026-09-08T10:30:00Z', team_members: [{ id: 'm1', member_name: 'Gwen Stacy', member_role: 'Design', member_email: 'gwen@uni.edu' }, { id: 'm2', member_name: 'Peter B. Parker', member_role: 'Backend', member_email: 'peter@uni.edu' }], scores: [{ innovation: 9, technical: 8, design: 9, presentation: 7 }] },
-        { id: '2', team_name: 'Quantum Coders', leader_name: 'Peter Parker', leader_email: 'peter@mit.edu', college: 'MIT', project_title: 'WebShooter App', project_description: 'Real-time collaboration and code sharing platform.', tech_stack: 'Vue, Firebase, WebRTC', github_link: 'https://github.com/peter/webshooter', submission_status: 'submitted', created_at: '2026-09-08T11:00:00Z', team_members: [{ id: 'm3', member_name: 'MJ Watson', member_role: 'Frontend', member_email: 'mj@mit.edu' }], scores: [] },
-        { id: '3', team_name: 'Noir Devs', leader_name: 'Spider Noir', leader_email: 'noir@edu.in', college: 'Shadow University', project_title: 'Dark Mode Everything', project_description: 'A browser extension that creates perfect dark mode for any website.', tech_stack: 'JavaScript, Chrome API, CSS', submission_status: 'submitted', created_at: '2026-09-08T12:00:00Z', team_members: [], scores: [{ innovation: 7, technical: 8, design: 8, presentation: 6 }] },
-        { id: '4', team_name: "Peni's Lab", leader_name: 'Peni Parker', leader_email: 'peni@future.edu', college: 'Neo Tokyo Tech', project_title: null, submission_status: 'not_submitted', created_at: '2026-09-08T14:00:00Z', team_members: [{ id: 'm4', member_name: 'SP//dr', member_role: 'AI' }], scores: [] },
-      ]);
-      setAnnouncements([
-        { id: 'a1', title: 'Welcome to BIT & BUILD!', content: 'The hackathon officially begins. Good luck to all teams!', priority: 'important', created_by: 'admin@bitandbuild.com', created_at: '2026-09-08T10:00:00Z' },
-        { id: 'a2', title: 'Mentor Sessions Available', content: 'Sign up for 1-on-1 mentor sessions at the help desk.', priority: 'normal', created_by: 'admin@bitandbuild.com', created_at: '2026-09-08T14:00:00Z' },
-      ]);
-    }
+    try {
+      const response = await fetch(`${API_BASE}/api/teams`, { credentials: 'include' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to load teams');
+      setTeams(body.teams || []);
+      const announcementsResponse = await fetch(`${API_BASE}/api/announcements`, { credentials: 'include' });
+      const announcementsBody = await announcementsResponse.json();
+      if (!announcementsResponse.ok) throw new Error(announcementsBody?.error?.message || 'Failed to load announcements');
+      setAnnouncements(announcementsBody.announcements || []);
+      const problemsResponse = await fetch(`${API_BASE}/api/problem-statements`, { credentials: 'include' });
+      const problemsBody = await problemsResponse.json();
+      if (!problemsResponse.ok) throw new Error(problemsBody?.error?.message || 'Failed to load problem statements');
+      setProblemStatements(problemsBody.problemStatements || []);
+    } catch (error) { showMessage(error.message, 'error'); }
     setLoading(false);
   }
 
@@ -105,18 +104,9 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
     const loginName = createLoginName(teamForm.teamName);
     const password = createPassword(teamForm.teamName);
     try {
-      if (!isSupabaseConfigured) {
-        throw new Error(
-          'Team registration is unavailable because the database is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to the deployed client, then redeploy.',
-        );
-      }
-
-      await createOrganizerTeam({
-        team_name: teamForm.teamName,
-        leader_email: teamForm.leaderEmail,
-        leader_name: teamForm.leaderName,
-        college: teamForm.college,
-      }, { loginName, password });
+      const response = await fetch(`${API_BASE}/api/teams`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamName: teamForm.teamName, leaderName: teamForm.leaderName, leaderEmail: teamForm.leaderEmail, college: teamForm.college, loginName, password }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to register team');
       await loadData();
       setIssuedCredentials({ teamName: teamForm.teamName, loginName, password });
       setTeamForm({ teamName: '', leaderName: '', leaderEmail: '', college: '' });
@@ -173,12 +163,10 @@ async function handleCopyJudgePassword() {
     e.preventDefault();
     setSaving(true);
     try {
-      if (isSupabaseConfigured) {
-        await createAnnouncement({ title: annTitle, content: annContent, priority: annPriority, created_by: user.email });
-        await loadData();
-      } else {
-        setAnnouncements(prev => [{ id: 'a' + Date.now(), title: annTitle, content: annContent, priority: annPriority, created_by: user.email, created_at: new Date().toISOString() }, ...prev]);
-      }
+      const response = await fetch(`${API_BASE}/api/announcements`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: annTitle, content: annContent, priority: annPriority }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to post announcement');
+      await loadData();
       setAnnTitle(''); setAnnContent(''); setAnnPriority('normal');
       showMessage('Announcement posted! 📢');
     } catch (err) {
@@ -190,12 +178,9 @@ async function handleCopyJudgePassword() {
   async function handleDeleteAnnouncement(id) {
     setSaving(true);
     try {
-      if (isSupabaseConfigured) {
-        await deleteAnnouncement(id);
-        await loadData();
-      } else {
-        setAnnouncements(prev => prev.filter(a => a.id !== id));
-      }
+      const response = await fetch(`${API_BASE}/api/announcements/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body?.error?.message || 'Failed to delete announcement'); }
+      await loadData();
       showMessage('Announcement deleted');
     } catch (err) {
       showMessage(err.message || 'Failed to delete', 'error');
@@ -203,8 +188,36 @@ async function handleCopyJudgePassword() {
     setSaving(false);
   }
 
+  async function handleSaveProblem(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const method = problemForm.id ? 'PUT' : 'POST';
+      const url = problemForm.id ? `${API_BASE}/api/problem-statements/${problemForm.id}` : `${API_BASE}/api/problem-statements`;
+      const response = await fetch(url, { method, credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: problemForm.title, description: problemForm.description, isActive: problemForm.isActive }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to save problem statement');
+      setProblemForm({ id: '', title: '', description: '', isActive: true });
+      await loadData();
+      showMessage('Problem statement saved.');
+    } catch (error) { showMessage(error.message, 'error'); }
+    setSaving(false);
+  }
+
+  async function handleDeleteProblem(id) {
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/problem-statements/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body?.error?.message || 'Failed to delete problem statement'); }
+      if (problemForm.id === id) setProblemForm({ id: '', title: '', description: '', isActive: true });
+      await loadData();
+      showMessage('Problem statement deleted.');
+    } catch (error) { showMessage(error.message, 'error'); }
+    setSaving(false);
+  }
+
   return (
-    <DashboardShell role="organizer" roleLabel="Organizer" activeTab={activeTab} onTabChange={setActiveTab}>
+    <DashboardShell role="organizer" roleLabel="Admin" activeTab={activeTab} onTabChange={setActiveTab}>
       {message.text && (
         <div className={`dash-message dash-message--${message.type}`}>{message.text}</div>
       )}
@@ -286,7 +299,7 @@ async function handleCopyJudgePassword() {
           {activeTab === 'overview' && (
             <div className="dash-section">
               <div className="dash-welcome glass-card">
-                <h1>Organizer Command Center 🎯</h1>
+                <h1>ADMIN Command Center 🎯</h1>
                 <p>Full oversight of teams, submissions, and event management.</p>
               </div>
 
@@ -421,7 +434,9 @@ async function handleCopyJudgePassword() {
                       <h4 style={{fontSize: 'var(--fs-small)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)'}}>Scores</h4>
                       {expandedTeam.scores.map((s, i) => (
                         <div key={i} style={{fontSize: 'var(--fs-small)', color: 'var(--color-text-muted)', padding: '0.3rem 0'}}>
+                          <p>Judge: {s.judge_email}</p>
                           <strong>Weighted Score: {getScoreTotal(s).toFixed(1).replace(/\.0$/, '')} / 100</strong>
+                          <p style={{ marginTop: '0.3rem' }}>Completeness {s.completeness} · Technical Execution {s.technical_execution} · Innovation &amp; Creativity {s.innovation_creativity} · Applicability &amp; Scalability {s.applicability_scalability} · UI/UX {s.ui_ux} · Bonus Features {s.bonus_features} · Presentation {s.presentation} · Work Distribution {s.work_distribution}</p>
                         </div>
                       ))}
                     </div>
@@ -465,6 +480,29 @@ async function handleCopyJudgePassword() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'problems' && (
+            <div className="dash-section">
+              <h2 className="dash-title">Problem Statements</h2>
+              <form className="dash-form glass-card" onSubmit={handleSaveProblem}>
+                <h3>{problemForm.id ? 'Edit Problem Statement' : 'Create Problem Statement'}</h3>
+                <div className="dash-form-grid">
+                  <label className="dash-field dash-field--full"><span>Title *</span><input required value={problemForm.title} onChange={(e) => setProblemForm({ ...problemForm, title: e.target.value })} /></label>
+                  <label className="dash-field dash-field--full"><span>Description *</span><textarea required rows={4} value={problemForm.description} onChange={(e) => setProblemForm({ ...problemForm, description: e.target.value })} /></label>
+                  <label className="dash-field"><span>Status</span><select value={String(problemForm.isActive)} onChange={(e) => setProblemForm({ ...problemForm, isActive: e.target.value === 'true' })}><option value="true">Active</option><option value="false">Inactive</option></select></label>
+                </div>
+                <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Saving...' : 'Save Problem Statement'}</button>
+                {problemForm.id && <button type="button" className="btn btn--secondary" style={{ marginLeft: '0.75rem' }} onClick={() => setProblemForm({ id: '', title: '', description: '', isActive: true })}>Cancel</button>}
+              </form>
+              <div className="dash-announcements">
+                {problemStatements.map((problem) => <div className="dash-announcement glass-card" key={problem.id}>
+                  <div className="dash-announcement-header"><h3>{problem.title}</h3><div><span className="dash-priority-badge dash-priority-badge--normal">{problem.is_active ? 'active' : 'inactive'}</span><button className="dash-remove-btn" onClick={() => handleDeleteProblem(problem.id)} disabled={saving}>✕</button></div></div>
+                  <p>{problem.description}</p>
+                  <button type="button" className="btn btn--secondary" onClick={() => setProblemForm({ id: problem.id, title: problem.title, description: problem.description, isActive: problem.is_active })}>Edit</button>
+                </div>)}
+              </div>
             </div>
           )}
 

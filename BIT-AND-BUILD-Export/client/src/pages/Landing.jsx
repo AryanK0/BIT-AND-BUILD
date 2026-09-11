@@ -100,7 +100,7 @@ function Landing() {
           </div>
 
           <div className="landing__maker-block">
-            <div className="landing__maker-photo" role="img" aria-label="Photo of Shivain Arora" />
+            <div className="landing__maker-photo" aria-hidden="true">SA</div>
             <p>MADE BY : SHIVAIN ARORA</p>
           </div>
 
