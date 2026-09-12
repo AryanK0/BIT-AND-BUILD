@@ -11,7 +11,8 @@ const RUBRIC = [
   { key: 'applicability_scalability', name: 'Applicability & Scalability', weight: 15 },
   { key: 'ui_ux', name: 'UI/UX', weight: 10 },
   { key: 'bonus_features', name: 'Bonus Features', weight: 10 },
-  { key: 'work_distribution', name: 'Work Distribution', weight: 10 },
+  { key: 'presentation', name: 'Presentation', weight: 5 },
+  { key: 'work_distribution', name: 'Work Distribution', weight: 5 },
 ];
 
 const EMPTY_SCORES = Object.fromEntries(RUBRIC.map(({ key }) => [key, 0]));
@@ -36,25 +37,34 @@ function normalizeExistingScore(existingScore) {
     applicability_scalability: hasWeightedCriteria ? (existingScore.applicability_scalability ?? 0) : 0,
     ui_ux: hasWeightedCriteria ? (existingScore.ui_ux ?? 0) : (existingScore.design ?? 0),
     bonus_features: hasWeightedCriteria ? (existingScore.bonus_features ?? 0) : 0,
+    presentation: hasWeightedCriteria ? (existingScore.presentation ?? 0) : (existingScore.presentation ?? 0),
     work_distribution: hasWeightedCriteria ? (existingScore.work_distribution ?? 0) : 0,
   };
 }
 
-function PresentationScore({ presentation, apiBase, onSaved, showMessage }) {
-  const [score, setScore] = useState(presentation.score ?? '');
+function memberNames(members) {
+  return Array.isArray(members) ? members.map((member) => member?.member_name).filter(Boolean).join(', ') : '';
+}
+
+function PresentationEvaluation({ presentation, apiBase, onSaved, showMessage }) {
+  const [scores, setScores] = useState(() => Object.fromEntries(RUBRIC.map(({ key }) => [key, Number(presentation[key]) || 0])));
   const [comments, setComments] = useState(presentation.comments ?? '');
   const [saving, setSaving] = useState(false);
 
+  function changeScore(key, delta) {
+    const maximum = RUBRIC.find((criterion) => criterion.key === key).weight;
+    setScores((current) => ({ ...current, [key]: Math.max(0, Math.min(maximum, current[key] + delta)) }));
+  }
+
   async function submit(event) {
     event.preventDefault();
-    const numericScore = Number(score);
-    if (!Number.isInteger(numericScore) || numericScore < 0 || numericScore > 10) {
-      showMessage('Presentation score must be an integer from 0 to 10.', 'error');
+    if (RUBRIC.some(({ key, weight }) => !Number.isInteger(scores[key]) || scores[key] < 0 || scores[key] > weight)) {
+      showMessage('Each presentation mark must be a whole number within its maximum.', 'error');
       return;
     }
     setSaving(true);
     try {
-      const response = await fetch(`${apiBase}/api/judge/presentations/${presentation.team_id}/score`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score: numericScore, comments }) });
+      const response = await fetch(`${apiBase}/api/judge/presentations/${presentation.team_id}/score`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...scores, comments }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message || 'Failed to save presentation score');
       showMessage('Presentation evaluation saved.');
@@ -63,10 +73,14 @@ function PresentationScore({ presentation, apiBase, onSaved, showMessage }) {
     setSaving(false);
   }
 
-  return <form onSubmit={submit} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', minWidth: '14rem' }}>
-    <input aria-label={`Presentation score for ${presentation.team_name}`} type="number" min="0" max="10" step="1" value={score} onChange={(event) => setScore(event.target.value)} placeholder="0–10" style={{ width: '4.2rem' }} required />
-    <input aria-label={`Presentation comments for ${presentation.team_name}`} value={comments} onChange={(event) => setComments(event.target.value)} placeholder="Comments" style={{ width: '7rem' }} />
-    <button className="btn btn--secondary" style={{ padding: '0.4rem 0.55rem', fontSize: '0.75rem' }} disabled={saving}>{saving ? '…' : 'Save'}</button>
+  const total = RUBRIC.reduce((sum, { key }) => sum + scores[key], 0);
+  return <form className="judge-presentation-evaluation" onSubmit={submit}>
+    <div className="judge-score-list">{RUBRIC.map(({ key, name, weight }) => <div className="judge-score-row" key={key}>
+      <span className="judge-score-name"><strong>{name}</strong><small>/ {weight}</small></span>
+      <div className="judge-score-controls"><button type="button" className="judge-score-btn" onClick={() => changeScore(key, -1)} aria-label={`Decrease ${name}`}>−</button><span className="judge-score-value">{scores[key]}</span><button type="button" className="judge-score-btn" onClick={() => changeScore(key, 1)} aria-label={`Increase ${name}`}>+</button></div>
+    </div>)}</div>
+    <label className="dash-field"><span>Comments</span><textarea value={comments} onChange={(event) => setComments(event.target.value)} placeholder="Feedback for the team..." rows={2} /></label>
+    <div className="judge-score-submit"><button className="btn btn--secondary" disabled={saving}>{saving ? 'Saving...' : presentation.scored_at ? 'Update Evaluation' : 'Save Evaluation'}</button><span>Total: <strong>{total} / 100</strong>{presentation.scored_at ? ' · Evaluated' : ''}</span></div>
   </form>;
 }
 
@@ -83,6 +97,7 @@ function JudgeDashboard() {
   const [comments, setComments] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
+  const downloadingPresentationId = null;
 
   useEffect(() => { loadData(); }, []);
 
@@ -110,7 +125,9 @@ function JudgeDashboard() {
     setTimeout(() => setMessage({ text: '', type: '' }), 4000);
   }
 
-  async function downloadPresentation(teamId, filename) {
+  async function downloadPresentation(presentationOrTeamId, filename) {
+    const teamId = typeof presentationOrTeamId === 'object' ? presentationOrTeamId.team_id : presentationOrTeamId;
+    const downloadFilename = filename || presentationOrTeamId?.original_filename || 'presentation.pptx';
     try {
       showMessage('Downloading presentation...', 'info');
       const response = await fetch(`${API_BASE}/api/judge/teams/${teamId}/presentation`, { credentials: 'include' });
@@ -122,7 +139,7 @@ function JudgeDashboard() {
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
-      a.download = filename || 'presentation.pptx';
+      a.download = downloadFilename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -230,11 +247,11 @@ function JudgeDashboard() {
                     <thead><tr><th>Team & Members</th><th>Uploaded</th><th>PPT Status</th><th>Evaluation</th><th>Action</th></tr></thead>
                     <tbody>{presentations.map((presentation) => (
                       <tr key={presentation.team_id}>
-                        <td><strong>{presentation.team_name}</strong><br /><small>{presentation.team_members?.map((member) => member.member_name).join(', ')}</small></td>
-                        <td>{new Date(presentation.uploaded_at).toLocaleString()}</td>
-                        <td><span className="dash-priority-badge dash-priority-badge--normal">PPT submitted</span></td>
-                        <td><PresentationScore presentation={presentation} apiBase={API_BASE} onSaved={loadData} showMessage={showMessage} /></td>
-                        <td><button className="btn btn--secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={() => downloadPresentation(presentation.team_id, presentation.original_filename)}>View / Download</button></td>
+                        <td><strong>{presentation.team_name || 'Unnamed team'}</strong><br /><small>{memberNames(presentation.team_members)}</small></td>
+                        <td>{presentation.uploaded_at ? new Date(presentation.uploaded_at).toLocaleString() : '—'}</td>
+                        <td><span className={`dash-priority-badge ${presentation.original_filename ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>{presentation.original_filename ? 'PPT submitted' : 'No presentation submitted'}</span></td>
+                        <td>{presentation.original_filename ? <PresentationEvaluation presentation={presentation} apiBase={API_BASE} onSaved={loadData} showMessage={showMessage} /> : '—'}</td>
+                        <td>{presentation.original_filename ? <button type="button" className="btn btn--secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={() => downloadPresentation(presentation)} disabled={downloadingPresentationId === presentation.team_id}>{downloadingPresentationId === presentation.team_id ? 'Downloading…' : 'Download PPT'}</button> : '—'}</td>
                       </tr>
                     ))}</tbody>
                   </table>

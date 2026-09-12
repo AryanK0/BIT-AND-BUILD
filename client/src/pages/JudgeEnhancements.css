@@ -44,6 +44,14 @@
 .judge-score-value { min-width: 2.2rem; text-align: center; font-size: 1.1rem; font-weight: 800; }
 .judge-score-submit { display: flex; align-items: center; gap: var(--space-4); margin-top: 1rem; }
 .judge-score-submit > span { font-size: var(--fs-small); color: var(--color-text-muted); }
+.judge-presentation-evaluation { min-width: 19rem; }
+.judge-presentation-evaluation .judge-score-list { gap: .4rem; }
+.judge-presentation-evaluation .judge-score-row { padding: .45rem .55rem; gap: .5rem; }
+.judge-score-name small { display: block; color: var(--color-text-muted); font-weight: 600; margin-top: .15rem; }
+.judge-presentation-evaluation { min-width: 19rem; }
+.judge-presentation-evaluation .judge-score-list { gap: .4rem; }
+.judge-presentation-evaluation .judge-score-row { padding: .45rem .55rem; gap: .5rem; }
+.judge-score-name small { display: block; color: var(--color-text-muted); font-weight: 600; margin-top: .15rem; }
 
 @media (max-width: 560px) {
   .judge-score-row { grid-template-columns: 1fr; }
