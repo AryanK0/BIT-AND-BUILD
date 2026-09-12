@@ -15,7 +15,7 @@ describe('Resend email service', () => {
     const send = vi.fn().mockResolvedValue({ data: { id: 'email_123' } });
     const service = createEmailService({ apiKey: 'test-key', senderEmail: ' VERIFIED@EXAMPLE.COM ', senderName: ' BIT AND BUILD ', ResendClient: makeClient(send) });
     await expect(service.send({ to: ' LEADER@EXAMPLE.COM ', subject: 'Credentials', html: '<p>Hello</p>', text: 'Hello' })).resolves.toEqual({ ok: true, id: 'email_123' });
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ from: 'BIT AND BUILD <verified@example.com>', to: 'leader@example.com', html: '<p>Hello</p>', text: 'Hello' }));
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ from: 'BIT AND BUILD <verified@example.com>', to: ['leader@example.com'], subject: 'Credentials', html: '<p>Hello</p>', text: 'Hello' }));
   });
 
   test('handles a missing sender environment variable without leaking details', async () => {
@@ -37,7 +37,7 @@ describe('Resend email service', () => {
     const logger = { error: vi.fn() };
     const service = createEmailService({ apiKey: 'test-key', senderEmail: 'verified@example.com', ResendClient: makeClient(send), logger });
     await expect(service.send({ to: 'leader@example.com', subject: 'Test', html: '<p>Test</p>' })).resolves.toMatchObject({ ok: false, code: emailErrorCodes.EMAIL_DELIVERY_ERROR, diagnostic: { providerErrorName: 'validation_error', providerStatus: 422 } });
-    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ provider: 'resend', providerErrorName: 'validation_error', providerErrorMessage: 'The sender domain is not verified', providerStatus: 422, providerResponseData: { id: null }, providerResponseErrors: [{ field: 'from', message: 'Sender domain is not verified' }], senderEmail: 'verified@example.com', recipientEmail: 'leader@example.com', subject: 'Test', payloadFieldTypes: { from: 'string', to: 'string', subject: 'string', html: 'string', text: 'undefined', replyTo: 'undefined' } }));
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ provider: 'resend', providerErrorName: 'validation_error', providerErrorMessage: 'The sender domain is not verified', providerStatus: 422, providerError: expect.objectContaining({ name: 'validation_error', statusCode: 422 }), providerResponseData: { id: null }, providerResponseErrors: [{ field: 'from', message: 'Sender domain is not verified' }], senderEmail: 'verified@example.com', recipientEmail: 'leader@example.com', subject: 'Test', htmlContentExists: true, payloadFieldTypes: { from: 'string', to: 'object', subject: 'string', html: 'string', text: 'undefined', replyTo: 'undefined' } }));
     expect(JSON.stringify(logger.error.mock.calls)).not.toContain('test-key');
   });
 

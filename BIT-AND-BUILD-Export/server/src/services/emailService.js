@@ -18,7 +18,7 @@ function isDisplayName(value) {
 function safeProviderText(value) {
   return String(value || '')
     .replace(/re_[A-Za-z0-9_-]+/g, '[redacted]')
-    .replace(/(?:api[_ -]?key|authorization|password)\s*[:=]\s*\S+/gi, (match) => `${match.split(/[:=]/)[0]}=[redacted]`)
+    .replace(/(?:api[_ -]?key|authorization|password|token|secret|credential|hash)\s*[:=]\s*\S+/gi, (match) => `${match.split(/[:=]/)[0]}=[redacted]`)
     .slice(0, 500);
 }
 
@@ -27,7 +27,7 @@ function safeProviderValue(value, depth = 0) {
   if (typeof value === 'string') return safeProviderText(value);
   if (depth >= 3) return '[truncated]';
   if (Array.isArray(value)) return value.slice(0, 10).map((item) => safeProviderValue(item, depth + 1));
-  if (typeof value === 'object') return Object.fromEntries(Object.entries(value).slice(0, 20).map(([key, item]) => [key, /api[_ -]?key|authorization|password|html|text/i.test(key) ? '[redacted]' : safeProviderValue(item, depth + 1)]));
+  if (typeof value === 'object') return Object.fromEntries(Object.entries(value).slice(0, 20).map(([key, item]) => [key, /api[_ -]?key|authorization|password|token|secret|credential|hash|html|text/i.test(key) ? '[redacted]' : safeProviderValue(item, depth + 1)]));
   return safeProviderText(value);
 }
 
@@ -37,6 +37,17 @@ function providerErrorDetails(error) {
     providerErrorMessage: safeProviderText(error?.message || 'No provider error message'),
     providerStatus: error?.statusCode ?? error?.status ?? null,
     providerCode: safeProviderText(error?.code || ''),
+  };
+}
+
+function safeProviderErrorObject(error) {
+  const object = error && typeof error === 'object' ? safeProviderValue(error) : {};
+  return {
+    ...(object && typeof object === 'object' && !Array.isArray(object) ? object : {}),
+    name: safeProviderText(error?.name || 'ProviderError'),
+    message: safeProviderText(error?.message || 'No provider error message'),
+    statusCode: error?.statusCode ?? error?.status ?? null,
+    code: safeProviderText(error?.code || ''),
   };
 }
 
@@ -50,8 +61,9 @@ function providerResponseDetails(response) {
 function payloadSummary({ from, to, subject, html, text }) {
   return {
     senderEmail: from.match(/<([^>]+)>$/)?.[1] || from,
-    recipientEmail: to,
+    recipientEmail: Array.isArray(to) ? to[0] : to,
     subject,
+    htmlContentExists: typeof html === 'string' && html.trim().length > 0,
     payloadFieldTypes: {
       from: typeof from,
       to: typeof to,
@@ -123,27 +135,27 @@ export function createEmailService({
         return { ok: false, code: 'INVALID_EMAIL_MESSAGE' };
       }
 
-      const emailPayload = { from, to: recipient, subject: subject.trim(), html, ...(text !== undefined ? { text } : {}) };
+      const emailPayload = { from, to: [recipient], subject: subject.trim(), html, ...(text !== undefined ? { text } : {}) };
       const summary = payloadSummary(emailPayload);
       logger.info?.({ event: 'email_delivery_attempt', provider: 'resend', ...summary });
 
       try {
         const response = await client.emails.send(emailPayload);
         if (response?.error) {
-          const diagnostic = { ...providerErrorDetails(response.error), ...providerResponseDetails(response) };
+          const diagnostic = { ...providerErrorDetails(response.error), providerError: safeProviderErrorObject(response.error), ...providerResponseDetails(response) };
           logger.error?.({ event: 'email_delivery_error', provider: 'resend', ...summary, ...diagnostic });
-          return { ok: false, code: EMAIL_DELIVERY_ERROR, diagnostic };
+          return { ok: false, code: EMAIL_DELIVERY_ERROR, metadata: summary, diagnostic };
         }
         if (!response?.data?.id) {
           const diagnostic = { providerErrorName: 'unexpected_response', providerErrorMessage: 'Resend returned no message ID', providerStatus: null, providerCode: '', ...providerResponseDetails(response) };
           logger.error?.({ event: 'email_delivery_error', provider: 'resend', ...summary, ...diagnostic });
-          return { ok: false, code: EMAIL_DELIVERY_ERROR, diagnostic };
+          return { ok: false, code: EMAIL_DELIVERY_ERROR, metadata: summary, diagnostic };
         }
         return { ok: true, id: response.data.id };
       } catch (error) {
-        const diagnostic = { ...providerErrorDetails(error), providerResponseData: safeProviderValue(error?.data), providerResponseErrors: safeProviderValue(error?.errors) };
+        const diagnostic = { ...providerErrorDetails(error), providerError: safeProviderErrorObject(error), providerResponseData: safeProviderValue(error?.data), providerResponseErrors: safeProviderValue(error?.errors) };
         logger.error?.({ event: 'email_delivery_error', provider: 'resend', ...summary, ...diagnostic });
-        return { ok: false, code: EMAIL_DELIVERY_ERROR, diagnostic };
+        return { ok: false, code: EMAIL_DELIVERY_ERROR, metadata: summary, diagnostic };
       }
     },
   };
@@ -154,7 +166,7 @@ export function teamCredentialsMessage({ teamName, loginName, password }) {
   const safeLoginName = escapeHtml(loginName);
   const safePassword = escapeHtml(password);
   return {
-    subject: 'Your BIT AND BUILD team credentials',
+    subject: 'Your BIT AND BUILD credentials',
     html: `<p>Hello ${safeTeamName},</p><p>Your participant login credentials are:</p><ul><li>Login ID: <strong>${safeLoginName}</strong></li><li>Password: <strong>${safePassword}</strong></li></ul><p>Please keep these credentials private.</p>`,
     text: `Hello ${teamName},\n\nYour participant login credentials are:\nLogin ID: ${loginName}\nPassword: ${password}\n\nPlease keep these credentials private.`,
   };

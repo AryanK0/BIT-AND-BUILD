@@ -108,16 +108,23 @@ export function createApp({ pool, config, logger = console, emailService } = {})
         stage = 'credential_email';
         delivery = await configuredEmailService.send({ to: team.leader_email, ...teamCredentialsMessage({ teamName: team.team_name, loginName, password: input.password }) });
       } catch (error) {
-        logger.error?.({ event: 'team_credential_email_error', teamId: team.id, errorType: error?.name || 'Error', errorMessage: safeErrorMessage(error) });
-        delivery = { ok: false, code: 'EMAIL_DELIVERY_ERROR' };
+        const metadata = { senderEmail: config.resendSenderEmail, recipientEmail: team.leader_email, subject: 'Your BIT AND BUILD credentials', htmlContentExists: true };
+        const diagnostic = { providerErrorName: error?.name || 'Error', providerErrorMessage: safeErrorMessage(error), providerStatus: error?.statusCode ?? error?.status ?? null };
+        logger.error?.({ event: 'team_credential_email_error', teamId: team.id, ...metadata, ...diagnostic });
+        delivery = { ok: false, code: 'EMAIL_DELIVERY_ERROR', metadata, diagnostic };
       }
       if (!delivery.ok) logger.error?.({
         event: 'team_credential_email_not_sent',
         teamId: team.id,
         code: delivery.code,
+        senderEmail: delivery.metadata?.senderEmail,
+        recipientEmail: delivery.metadata?.recipientEmail,
+        subject: delivery.metadata?.subject,
+        htmlContentExists: delivery.metadata?.htmlContentExists,
         providerErrorName: delivery.diagnostic?.providerErrorName,
         providerErrorMessage: delivery.diagnostic?.providerErrorMessage,
         providerStatus: delivery.diagnostic?.providerStatus,
+        providerError: delivery.diagnostic?.providerError,
         providerResponseData: delivery.diagnostic?.providerResponseData,
         providerResponseErrors: delivery.diagnostic?.providerResponseErrors,
       });
