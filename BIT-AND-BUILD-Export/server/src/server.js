@@ -7,7 +7,7 @@ import { loadConfig } from './config.js';
 export function startServer({ environment = process.env, logger = console } = {}) {
   const config = loadConfig(environment);
   const pool = new Pool({ connectionString: config.databaseUrl });
-  const app = createApp({ pool, config });
+  const app = createApp({ pool, config, logger });
   const server = app.listen(config.port, () => {
     logger.log(`API listening on port ${config.port}`);
   });

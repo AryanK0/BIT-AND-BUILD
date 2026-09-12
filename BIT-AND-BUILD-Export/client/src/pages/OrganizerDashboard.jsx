@@ -121,7 +121,9 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
       await loadData();
       setIssuedCredentials({ teamName: teamForm.teamName, loginName, password });
       setTeamForm({ teamName: '', leaderName: '', leaderEmail: '', college: '' });
-      showMessage('Team registered. Share these credentials securely.');
+      showMessage(body.credentialEmail === 'not_sent'
+        ? 'Team registered, but the credential email could not be sent. Share the credentials securely.'
+        : 'Team registered. Share these credentials securely.', body.credentialEmail === 'not_sent' ? 'error' : 'success');
     } catch (err) {
       showMessage(err.message || 'Failed to register team', 'error');
     }

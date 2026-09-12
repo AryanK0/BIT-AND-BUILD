@@ -25,6 +25,7 @@ const norm = (value) => value.trim().toLowerCase();
 const errors = { 400: ['BAD_REQUEST', 'Request could not be processed'], 401: ['UNAUTHORIZED', 'Invalid login credentials'], 403: ['FORBIDDEN', 'Request is not allowed'], 404: ['NOT_FOUND', 'Not found'], 409: ['CONFLICT', 'Team name or login name already exists'], 429: ['RATE_LIMITED', 'Too many requests'], 503: ['SERVICE_UNAVAILABLE', 'Service temporarily unavailable'] };
 function fail(status) { const [code, message] = errors[status] || ['INTERNAL_ERROR', 'Internal server error']; return { error: { code, message } }; }
 function errorStatus(error) { if (error?.name === 'ZodError' || error?.type === 'entity.parse.failed' || error?.name === 'MulterError') return 400; if (error?.code === '23505') return 409; return Number.isInteger(error?.statusCode) ? error.statusCode : 500; }
+function safeErrorMessage(error) { return String(error?.message || '').replace(/re_[A-Za-z0-9_-]+/g, '[redacted]').replace(/password\s*[:=]\s*\S+/gi, 'password=[redacted]').slice(0, 500); }
 function requirePool(pool) { if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') { const error = new Error('Database unavailable'); error.statusCode = 503; throw error; } }
 function cookieOptions(config) { return { httpOnly: true, secure: config.nodeEnv === 'production', sameSite: config.nodeEnv === 'production' ? 'none' : 'lax', path: '/', maxAge: config.sessionTtlHours * 3600000 }; }
 function userDto(user) { return { id: user.id, email: user.email, name: user.name || user.display_name, role: user.role, ...(user.teamId || user.team_id ? { teamId: user.teamId || user.team_id } : {}) }; }
@@ -39,9 +40,7 @@ function safePresentationName(filename) { return path.basename(filename).replace
 
 export function createApp({ pool, config, logger = console, emailService } = {}) {
   if (!config) throw new Error('Server configuration is required');
-  const configuredEmailService = emailService ?? ((config.resendApiKey || config.resendSenderEmail)
-    ? createEmailService({ apiKey: config.resendApiKey, senderEmail: config.resendSenderEmail, senderName: config.resendSenderName, logger })
-    : null);
+  const configuredEmailService = emailService ?? createEmailService({ apiKey: config.resendApiKey, senderEmail: config.resendSenderEmail, senderName: config.resendSenderName, logger });
   const app = express(); app.disable('x-powered-by'); if (config.nodeEnv === 'production') app.set('trust proxy', 1);
   app.use(helmet()); app.use(cors({ origin: (origin, callback) => { if (!origin || origin === config.frontendOrigin) return callback(null, true); const error = new Error('Origin denied'); error.statusCode = 403; return callback(error); }, credentials: true })); app.use(express.json({ limit: '100kb' })); app.use(cookieParser()); app.use(rateLimit({ windowMs: 900000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false }));
   const presentationUpload = multer({ storage: multer.diskStorage({ destination: (_req, _file, callback) => fs.mkdir(config.uploadDir, { recursive: true }, (error) => callback(error, config.uploadDir)), filename: (_req, file, callback) => callback(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`) }), limits: { fileSize: 20 * 1024 * 1024, files: 1 }, fileFilter: (_req, file, callback) => { if (isAllowedPresentationFile(file)) return callback(null, true); const error = new Error('Only PDF, PPT, and PPTX presentation files are allowed'); error.statusCode = 400; return callback(error); } });
@@ -78,7 +77,40 @@ export function createApp({ pool, config, logger = console, emailService } = {})
   app.get('/api/auth/me', auth, (req, res) => res.json({ user: userDto(req.session) }));
   app.post('/api/auth/logout', auth, async (req, res, next) => { try { await deleteSession(pool, req.cookies?.[config.sessionCookieName]); const { maxAge, ...options } = cookieOptions(config); res.clearCookie(config.sessionCookieName, options); res.json({ success: true }); } catch (error) { next(error); } });
 
-  app.post('/api/teams', ...role('organizer'), async (req, res, next) => { let client; try { const input = registerTeam.parse(req.body); requirePool(pool); client = await pool.connect(); await client.query('BEGIN'); const passwordHash = await argon2.hash(input.password, { type: argon2.argon2id }); const team = (await client.query('INSERT INTO teams (team_name,leader_name,leader_email,college) VALUES ($1,$2,$3,$4) RETURNING *', [input.teamName, input.leaderName, norm(input.leaderEmail), input.college || null])).rows[0]; await client.query("INSERT INTO team_members (team_id,name,email,role) VALUES ($1,$2,$3,'Leader')", [team.id, input.leaderName, norm(input.leaderEmail)]); await client.query("INSERT INTO users (email,display_name,role,password_hash,team_id) VALUES ($1,$2,$3,'participant',$3,$4)", [norm(input.leaderEmail), input.leaderName, passwordHash, team.id]); const loginName = norm(input.loginName); await client.query('INSERT INTO team_credentials (team_id,login_name,password_hash) VALUES ($1,$2,$3)', [team.id, loginName, passwordHash]); await client.query('COMMIT'); const delivery = configuredEmailService ? await configuredEmailService.send({ to: team.leader_email, ...teamCredentialsMessage({ teamName: team.team_name, loginName, password: input.password }) }) : null; if (delivery && !delivery.ok) logger.error?.({ event: 'team_credential_email_not_sent', teamId: team.id, code: delivery.code }); res.status(201).json({ team: { id: team.id, teamName: team.team_name, leaderName: team.leader_name, leaderEmail: team.leader_email, college: team.college }, credentials: { loginName }, ...(delivery ? { credentialEmail: delivery.ok ? 'sent' : 'not_sent' } : {}) }); } catch (error) { if (client) await client.query('ROLLBACK'); next(error); } finally { client?.release(); } });
+  app.post('/api/teams', ...role('organizer'), async (req, res, next) => {
+    let client;
+    let committed = false;
+    try {
+      const input = registerTeam.parse(req.body);
+      requirePool(pool);
+      client = await pool.connect();
+      await client.query('BEGIN');
+      const passwordHash = await argon2.hash(input.password, { type: argon2.argon2id });
+      const team = (await client.query('INSERT INTO teams (team_name,leader_name,leader_email,college) VALUES ($1,$2,$3,$4) RETURNING *', [input.teamName, input.leaderName, norm(input.leaderEmail), input.college || null])).rows[0];
+      await client.query("INSERT INTO team_members (team_id,name,email,role) VALUES ($1,$2,$3,'Leader')", [team.id, input.leaderName, norm(input.leaderEmail)]);
+      await client.query("INSERT INTO users (email,display_name,role,password_hash,team_id) VALUES ($1,$2,$3,'participant',$3,$4)", [norm(input.leaderEmail), input.leaderName, passwordHash, team.id]);
+      const loginName = norm(input.loginName);
+      await client.query('INSERT INTO team_credentials (team_id,login_name,password_hash) VALUES ($1,$2,$3)', [team.id, loginName, passwordHash]);
+      await client.query('COMMIT');
+      committed = true;
+
+      let delivery;
+      try {
+        delivery = await configuredEmailService.send({ to: team.leader_email, ...teamCredentialsMessage({ teamName: team.team_name, loginName, password: input.password }) });
+      } catch (error) {
+        logger.error?.({ event: 'team_credential_email_error', teamId: team.id, errorType: error?.name || 'Error', errorMessage: safeErrorMessage(error) });
+        delivery = { ok: false, code: 'EMAIL_DELIVERY_ERROR' };
+      }
+      if (!delivery.ok) logger.error?.({ event: 'team_credential_email_not_sent', teamId: team.id, code: delivery.code });
+      res.status(201).json({ team: { id: team.id, teamName: team.team_name, leaderName: team.leader_name, leaderEmail: team.leader_email, college: team.college }, credentials: { loginName }, credentialEmail: delivery.ok ? 'sent' : 'not_sent' });
+    } catch (error) {
+      if (client && !committed) await client.query('ROLLBACK').catch((rollbackError) => logger.error?.({ event: 'team_registration_rollback_error', errorType: rollbackError?.name || 'Error', errorMessage: safeErrorMessage(rollbackError) }));
+      logger.error?.({ event: 'team_registration_error', errorType: error?.name || 'Error', errorCode: error?.code, errorMessage: safeErrorMessage(error) });
+      next(error);
+    } finally {
+      client?.release();
+    }
+  });
   const teamSelectBase = `SELECT t.*,s.title project_title,s.description project_description,s.tech_stack,s.github_url github_link,s.demo_url demo_link,COALESCE(s.status,'not_submitted') submission_status,(SELECT json_build_object('originalFilename',p.original_filename,'uploadedAt',p.uploaded_at) FROM presentations p WHERE p.team_id=t.id) presentation,COALESCE((SELECT json_agg(json_build_object('id',m.id,'member_name',m.name,'member_email',m.email,'member_role',m.role)) FROM team_members m WHERE m.team_id=t.id),'[]'::json) team_members`;
   const teamSelect = `${teamSelectBase},COALESCE((SELECT json_agg(sc ORDER BY sc.created_at DESC) FROM scores sc WHERE sc.team_id=t.id),'[]'::json) scores FROM teams t LEFT JOIN submissions s ON s.team_id=t.id`;
   const participantTeamSelect = `${teamSelectBase},'[]'::json AS scores FROM teams t LEFT JOIN submissions s ON s.team_id=t.id`;
@@ -108,5 +140,5 @@ export function createApp({ pool, config, logger = console, emailService } = {})
   app.get('/api/announcements', auth, async (_req, res, next) => { try { const result = await pool.query('SELECT id,title,content,priority,is_active,created_at,updated_at FROM announcements WHERE is_active=TRUE ORDER BY created_at DESC'); res.json({ announcements: result.rows }); } catch (error) { next(error); } });
   app.post('/api/announcements', ...role('organizer'), async (req, res, next) => { try { const input = announcement.parse(req.body); const result = await pool.query('INSERT INTO announcements (title,content,priority) VALUES ($1,$2,$3) RETURNING *', [input.title, input.content, input.priority || 'normal']); res.status(201).json({ announcement: result.rows[0] }); } catch (error) { next(error); } });
   app.delete('/api/announcements/:id', ...role('organizer'), async (req, res, next) => { try { const result = await pool.query('DELETE FROM announcements WHERE id=$1 RETURNING id', [req.params.id]); if (!result.rows[0]) return res.status(404).json(fail(404)); res.status(204).end(); } catch (error) { next(error); } });
-  app.use((_req, res) => res.status(404).json(fail(404))); app.use((error, req, res, _next) => { if (res.headersSent) return; const status = errorStatus(error); logger.error?.({ event: 'http_error', status, method: req.method, path: req.path, errorType: error?.name || 'Error' }); res.status(status).json(fail(status)); }); return app;
+  app.use((_req, res) => res.status(404).json(fail(404))); app.use((error, req, res, _next) => { if (res.headersSent) return; const status = errorStatus(error); logger.error?.({ event: 'http_error', status, method: req.method, path: req.path, errorType: error?.name || 'Error', errorCode: error?.code, errorMessage: safeErrorMessage(error) }); res.status(status).json(fail(status)); }); return app;
 }

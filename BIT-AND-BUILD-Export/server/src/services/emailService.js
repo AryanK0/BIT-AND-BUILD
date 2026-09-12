@@ -33,11 +33,22 @@ export function createEmailService({
   ].filter(Boolean);
 
   if (missing.length > 0) {
-    logger.error?.({ event: 'email_configuration_error', missing });
-    return { isConfigured: false, send: async () => configurationError(missing) };
+    return {
+      isConfigured: false,
+      send: async () => {
+        logger.error?.({ event: 'email_configuration_error', missing });
+        return configurationError(missing);
+      },
+    };
   }
 
-  const client = new ResendClient(apiKey);
+  let client;
+  try {
+    client = new ResendClient(apiKey);
+  } catch (error) {
+    logger.error?.({ event: 'email_initialization_error', errorType: error?.name || 'Error' });
+    return { isConfigured: false, send: async () => ({ ok: false, code: EMAIL_CONFIGURATION_ERROR }) };
+  }
   const from = `${senderName} <${senderEmail}>`;
 
   return {
