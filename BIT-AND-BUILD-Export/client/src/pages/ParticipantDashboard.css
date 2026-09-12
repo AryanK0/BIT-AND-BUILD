@@ -440,10 +440,56 @@
   border-radius: var(--radius-md);
 }
 
+.dash-table-wrap--teams {
+  scrollbar-color: var(--color-accent) rgba(255, 255, 255, 0.08);
+  scrollbar-width: auto;
+  scroll-behavior: smooth;
+}
+
+.dash-table-wrap--teams::-webkit-scrollbar {
+  height: 13px;
+}
+
+.dash-table-wrap--teams::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+
+.dash-table-wrap--teams::-webkit-scrollbar-thumb {
+  background: var(--color-accent);
+  border: 3px solid rgba(15, 15, 36, 0.9);
+  border-radius: 999px;
+}
+
+.dash-table-scroll-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--fs-small);
+}
+
+.dash-table-scroll-controls {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.dash-table-scroll-controls .btn {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.75rem;
+}
+
 .dash-table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--fs-small);
+}
+
+.dash-table--teams {
+  min-width: 1480px;
 }
 
 .dash-table th {

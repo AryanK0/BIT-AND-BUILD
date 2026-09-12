@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import DashboardShell from '../layouts/DashboardShell.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import './ParticipantDashboard.css'; /* reuse shared styles */
@@ -74,6 +74,7 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
   const [importingTeams, setImportingTeams] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
   const [revealedCredentials, setRevealedCredentials] = useState(null);
+  const teamsTableRef = useRef(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -107,6 +108,10 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
   function showMessage(text, type = 'success') {
     setMessage({ text, type });
     setTimeout(() => setMessage({ text: '', type: '' }), 4000);
+  }
+
+  function scrollTeamsTable(direction) {
+    teamsTableRef.current?.scrollBy({ left: direction * 520, behavior: 'smooth' });
   }
 
   const submittedCount = teams.filter(t => t.submission_status === 'submitted').length;
@@ -517,8 +522,15 @@ async function handleCopyJudgePassword() {
                   <button type="button" className="btn btn--secondary" onClick={() => setIssuedCredentials(null)}>Hide Credentials</button>
                 </div>
               )}
-              <div className="dash-table-wrap glass-card">
-                <table className="dash-table">
+              <div className="dash-table-scroll-header">
+                <p>Swipe or use the arrows to view every participant detail and action.</p>
+                <div className="dash-table-scroll-controls" aria-label="Scroll team details">
+                  <button type="button" className="btn btn--secondary" onClick={() => scrollTeamsTable(-1)} aria-label="Show previous team columns">‹ Left</button>
+                  <button type="button" className="btn btn--secondary" onClick={() => scrollTeamsTable(1)} aria-label="Show more team columns">Right ›</button>
+                </div>
+              </div>
+              <div className="dash-table-wrap dash-table-wrap--teams glass-card" ref={teamsTableRef} tabIndex="0" aria-label="All teams table. Scroll horizontally to view all columns.">
+                <table className="dash-table dash-table--teams">
                   <thead>
                     <tr>
                       <th>#</th>
