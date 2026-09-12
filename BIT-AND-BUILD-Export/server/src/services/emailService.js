@@ -7,8 +7,28 @@ function isEmail(value) {
   return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
-function configurationError(missing) {
-  return { ok: false, code: EMAIL_CONFIGURATION_ERROR, missing };
+function normalizeEmail(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function safeProviderText(value) {
+  return String(value || '')
+    .replace(/re_[A-Za-z0-9_-]+/g, '[redacted]')
+    .replace(/(?:api[_ -]?key|authorization|password)\s*[:=]\s*\S+/gi, (match) => `${match.split(/[:=]/)[0]}=[redacted]`)
+    .slice(0, 500);
+}
+
+function providerErrorDetails(error) {
+  return {
+    providerErrorName: safeProviderText(error?.name || 'ProviderError'),
+    providerErrorMessage: safeProviderText(error?.message || 'No provider error message'),
+    providerStatus: error?.statusCode ?? error?.status ?? null,
+    providerCode: safeProviderText(error?.code || ''),
+  };
+}
+
+function configurationError(missing, invalid = []) {
+  return { ok: false, code: EMAIL_CONFIGURATION_ERROR, missing, invalid };
 }
 
 function escapeHtml(value) {
@@ -27,17 +47,23 @@ export function createEmailService({
   ResendClient = Resend,
   logger = console,
 } = {}) {
+  const normalizedSenderEmail = normalizeEmail(senderEmail);
+  const normalizedSenderName = typeof senderName === 'string' ? senderName.trim() : '';
   const missing = [
     !apiKey && 'RESEND_API_KEY',
-    !senderEmail && 'RESEND_SENDER_EMAIL',
+    !normalizedSenderEmail && 'RESEND_SENDER_EMAIL',
+  ].filter(Boolean);
+  const invalid = [
+    normalizedSenderEmail && !isEmail(normalizedSenderEmail) && 'RESEND_SENDER_EMAIL',
+    !normalizedSenderName && 'RESEND_SENDER_NAME',
   ].filter(Boolean);
 
-  if (missing.length > 0) {
+  if (missing.length > 0 || invalid.length > 0) {
     return {
       isConfigured: false,
       send: async () => {
-        logger.error?.({ event: 'email_configuration_error', missing });
-        return configurationError(missing);
+        logger.error?.({ event: 'email_configuration_error', missing, invalid });
+        return configurationError(missing, invalid);
       },
     };
   }
@@ -49,24 +75,25 @@ export function createEmailService({
     logger.error?.({ event: 'email_initialization_error', errorType: error?.name || 'Error' });
     return { isConfigured: false, send: async () => ({ ok: false, code: EMAIL_CONFIGURATION_ERROR }) };
   }
-  const from = `${senderName} <${senderEmail}>`;
+  const from = `${normalizedSenderName} <${normalizedSenderEmail}>`;
 
   return {
     isConfigured: true,
     async send({ to, subject, html, text }) {
-      if (!isEmail(to) || typeof subject !== 'string' || !subject.trim() || typeof html !== 'string' || !html.trim()) {
+      const recipient = normalizeEmail(to);
+      if (!isEmail(recipient) || typeof subject !== 'string' || !subject.trim() || typeof html !== 'string' || !html.trim()) {
         return { ok: false, code: 'INVALID_EMAIL_MESSAGE' };
       }
 
       try {
-        const response = await client.emails.send({ from, to: to.trim(), subject: subject.trim(), html, ...(text ? { text } : {}) });
+        const response = await client.emails.send({ from, to: recipient, subject: subject.trim(), html, ...(text ? { text } : {}) });
         if (response?.error) {
-          logger.error?.({ event: 'email_delivery_error', provider: 'resend', errorType: response.error.name || 'ProviderError' });
+          logger.error?.({ event: 'email_delivery_error', provider: 'resend', ...providerErrorDetails(response.error) });
           return { ok: false, code: EMAIL_DELIVERY_ERROR };
         }
         return { ok: true, id: response?.data?.id };
       } catch (error) {
-        logger.error?.({ event: 'email_delivery_error', provider: 'resend', errorType: error?.name || 'Error' });
+        logger.error?.({ event: 'email_delivery_error', provider: 'resend', ...providerErrorDetails(error) });
         return { ok: false, code: EMAIL_DELIVERY_ERROR };
       }
     },
