@@ -461,27 +461,6 @@
   border-radius: 999px;
 }
 
-.dash-table-scroll-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin: var(--space-4) 0 var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--fs-small);
-}
-
-.dash-table-scroll-controls {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.dash-table-scroll-controls .btn {
-  padding: 0.4rem 0.7rem;
-  font-size: 0.75rem;
-}
-
 .dash-table {
   width: 100%;
   border-collapse: collapse;
@@ -489,7 +468,30 @@
 }
 
 .dash-table--teams {
-  min-width: 1480px;
+  min-width: 940px;
+  table-layout: fixed;
+}
+
+.dash-table--teams th:nth-child(1) { width: 3%; }
+.dash-table--teams th:nth-child(2) { width: 14%; }
+.dash-table--teams th:nth-child(3) { width: 13%; }
+.dash-table--teams th:nth-child(4) { width: 13%; }
+.dash-table--teams th:nth-child(5) { width: 22%; }
+.dash-table--teams th:nth-child(6) { width: 7%; }
+.dash-table--teams th:nth-child(7) { width: 10%; }
+.dash-table--teams th:nth-child(8) { width: 8%; }
+.dash-table--teams th:nth-child(9) { width: 10%; }
+
+.dash-team-colour {
+  display: block;
+  width: fit-content;
+  margin-top: 0.35rem;
+  padding: 0.12rem 0.38rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 /* Keep sensitive team controls available while the details scroll horizontally. */
@@ -498,7 +500,7 @@
   position: sticky;
   right: 0;
   z-index: 2;
-  min-width: 132px;
+  min-width: 118px;
   box-shadow: -10px 0 16px rgba(6, 8, 20, 0.38);
 }
 

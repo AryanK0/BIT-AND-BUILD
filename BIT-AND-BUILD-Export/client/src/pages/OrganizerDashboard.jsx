@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import DashboardShell from '../layouts/DashboardShell.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import './ParticipantDashboard.css'; /* reuse shared styles */
@@ -74,7 +74,6 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
   const [importingTeams, setImportingTeams] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
   const [revealedCredentials, setRevealedCredentials] = useState(null);
-  const teamsTableRef = useRef(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -108,10 +107,6 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
   function showMessage(text, type = 'success') {
     setMessage({ text, type });
     setTimeout(() => setMessage({ text: '', type: '' }), 4000);
-  }
-
-  function scrollTeamsTable(direction) {
-    teamsTableRef.current?.scrollBy({ left: direction * 520, behavior: 'smooth' });
   }
 
   const submittedCount = teams.filter(t => t.submission_status === 'submitted').length;
@@ -522,27 +517,17 @@ async function handleCopyJudgePassword() {
                   <button type="button" className="btn btn--secondary" onClick={() => setIssuedCredentials(null)}>Hide Credentials</button>
                 </div>
               )}
-              <div className="dash-table-scroll-header">
-                <p>Swipe or use the arrows to view every participant detail and action.</p>
-                <div className="dash-table-scroll-controls" aria-label="Scroll team details">
-                  <button type="button" className="btn btn--secondary" onClick={() => scrollTeamsTable(-1)} aria-label="Show previous team columns">‹ Left</button>
-                  <button type="button" className="btn btn--secondary" onClick={() => scrollTeamsTable(1)} aria-label="Show more team columns">Right ›</button>
-                </div>
-              </div>
-              <div className="dash-table-wrap dash-table-wrap--teams glass-card" ref={teamsTableRef} tabIndex="0" aria-label="All teams table. Scroll horizontally to view all columns.">
+              <div className="dash-table-wrap dash-table-wrap--teams glass-card" aria-label="All teams table">
                 <table className="dash-table dash-table--teams">
                   <thead>
                     <tr>
                       <th>#</th>
-                      <th>Team Name</th>
+                      <th>Team</th>
                       <th>Leader</th>
                       <th>Login ID</th>
-                      <th>Colour</th>
                       <th>Email</th>
-                      <th>College</th>
                       <th>Members</th>
                       <th>Status</th>
-                      <th>Registered</th>
                       <th>Details</th><th>Actions</th>
                     </tr>
                   </thead>
@@ -550,19 +535,16 @@ async function handleCopyJudgePassword() {
                     {teams.map((t, i) => (
                       <tr key={t.id}>
                         <td>{i + 1}</td>
-                        <td><strong>{t.team_name}</strong></td>
+                        <td><strong>{t.team_name}</strong>{t.team_colour && <span className="dash-team-colour" style={colourBadgeStyle(t.team_colour)}>{t.team_colour}</span>}</td>
                         <td>{t.leader_name}</td>
                         <td style={{fontSize: 'var(--fs-micro)'}}>{t.login_name || '—'}</td>
-                        <td>{t.team_colour ? <span className="dash-priority-badge" style={colourBadgeStyle(t.team_colour)}>{t.team_colour}</span> : '—'}</td>
                         <td style={{fontSize: 'var(--fs-micro)'}}>{t.leader_email}</td>
-                        <td>{t.college || '—'}</td>
                         <td>{(t.team_members?.length || 0) + 1}</td>
                         <td>
                           <span className={`dash-priority-badge ${t.submission_status === 'submitted' ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>
                             {t.submission_status === 'submitted' ? 'Submitted' : 'Pending'}
                           </span>
                         </td>
-                        <td style={{fontSize: 'var(--fs-micro)'}}>{new Date(t.created_at).toLocaleDateString()}</td>
                         <td>
                           <button
                             className="btn btn--secondary"
@@ -573,7 +555,7 @@ async function handleCopyJudgePassword() {
                           </button>
                         </td>
                         <td className="dash-team-actions">
-                          <button type="button" className="btn btn--secondary" onClick={() => viewTeamPassword(t)}>Password</button>
+                          <button type="button" className="btn btn--secondary" onClick={() => viewTeamPassword(t)}>View password</button>
                           <button type="button" className="btn btn--secondary dash-team-actions__delete" onClick={() => handleDeleteTeam(t)} disabled={saving}>Delete</button>
                         </td>
                       </tr>
