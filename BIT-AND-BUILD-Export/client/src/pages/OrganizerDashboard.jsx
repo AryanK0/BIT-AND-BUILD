@@ -572,7 +572,10 @@ async function handleCopyJudgePassword() {
                             {expandedTeam?.id === t.id ? 'Close' : 'View'}
                           </button>
                         </td>
-                        <td><button type="button" className="btn btn--secondary" style={{padding: '0.3rem 0.6rem', fontSize: '0.75rem'}} onClick={() => viewTeamPassword(t)}>View Password</button> <button type="button" className="btn btn--secondary" style={{padding: '0.3rem 0.6rem', fontSize: '0.75rem'}} onClick={() => handleDeleteTeam(t)} disabled={saving}>Delete</button></td>
+                        <td className="dash-team-actions">
+                          <button type="button" className="btn btn--secondary" onClick={() => viewTeamPassword(t)}>Password</button>
+                          <button type="button" className="btn btn--secondary dash-team-actions__delete" onClick={() => handleDeleteTeam(t)} disabled={saving}>Delete</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

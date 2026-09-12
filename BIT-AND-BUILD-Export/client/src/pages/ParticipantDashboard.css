@@ -492,6 +492,47 @@
   min-width: 1480px;
 }
 
+/* Keep sensitive team controls available while the details scroll horizontally. */
+.dash-table--teams th:last-child,
+.dash-table--teams td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  min-width: 132px;
+  box-shadow: -10px 0 16px rgba(6, 8, 20, 0.38);
+}
+
+.dash-table--teams th:last-child {
+  z-index: 3;
+  background: rgba(15, 15, 36, 0.98);
+}
+
+.dash-table--teams td:last-child {
+  background: #14162d;
+}
+
+.dash-table--teams tr:hover td:last-child {
+  background: #211835;
+}
+
+.dash-team-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.dash-team-actions .btn {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.dash-team-actions__delete {
+  border-color: rgba(255, 85, 85, 0.42) !important;
+  color: #ff8e98 !important;
+}
+
 .dash-table th {
   padding: var(--space-4) var(--space-5);
   text-align: left;
