@@ -53,27 +53,33 @@ function ParticipantDashboard() {
         setGithubLink(myTeam.github_link || '');
         setDemoLink(myTeam.demo_link || '');
       }
+    } catch (error) { setRegistrationError(error.message || 'Unable to confirm registration status.'); showMessage(error.message, 'error'); }
+
+    try {
       const announcementsResponse = await fetch(`${API_BASE}/api/announcements`, { credentials: 'include' });
-      const announcementsBody = await announcementsResponse.json();
-      if (!announcementsResponse.ok) throw new Error(announcementsBody?.error?.message || 'Failed to load announcements');
-      setAnnouncements(announcementsBody.announcements || []);
+      const announcementsBody = await announcementsResponse.json().catch(() => ({}));
+      if (announcementsResponse.ok) setAnnouncements(announcementsBody.announcements || []);
+
       const [problemsResponse, submissionsResponse] = await Promise.all([
         fetch(`${API_BASE}/api/problem-statements`, { credentials: 'include' }),
         fetch(`${API_BASE}/api/submissions/me`, { credentials: 'include' }),
       ]);
-      const problemsBody = await problemsResponse.json();
-      const submissionsBody = await submissionsResponse.json();
+      const problemsBody = await problemsResponse.json().catch(() => ({}));
+      const submissionsBody = await submissionsResponse.json().catch(() => ({}));
+      
       if (problemsResponse.ok) {
         setProblemStatements(problemsBody.problemStatements || []);
         setSelectedProblemStatement((current) => current || problemsBody.problemStatements?.[0]?.id || null);
       }
+      
       const savedSubmission = submissionsBody.submissions?.[0];
       if (submissionsResponse.ok && savedSubmission) {
         setProjectTitle(savedSubmission.title || ''); setProjectDesc(savedSubmission.description || '');
         setGithubLink(savedSubmission.repository_url || ''); setDemoLink(savedSubmission.deployed_url || '');
         setSelectedProblemStatement(savedSubmission.problem_statement_id);
       }
-    } catch (error) { setRegistrationError(error.message || 'Unable to confirm registration status.'); showMessage(error.message, 'error'); }
+    } catch (error) { console.error('Failed to load secondary data', error); }
+    
     setLoading(false);
   }
 
