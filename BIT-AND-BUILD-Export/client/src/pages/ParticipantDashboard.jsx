@@ -134,18 +134,24 @@ function ParticipantDashboard() {
 
   async function handlePresentationUpload(e) {
     e.preventDefault();
-    if (!presentationFile) { showMessage('Choose a PDF, PPT, or PPTX file first.', 'error'); return; }
+    if (!presentationFile) { showMessage('Please select a file.', 'error'); return; }
+    const allowedExtensions = /\.(pdf|ppt|pptx)$/i;
+    if (!allowedExtensions.test(presentationFile.name)) { showMessage('Unsupported file type. Choose a PDF, PPT, or PPTX file.', 'error'); return; }
+    if (presentationFile.size > 20 * 1024 * 1024) { showMessage('File is too large. The Round 1 limit is 20 MB.', 'error'); return; }
     setUploadingPresentation(true);
     try {
       const formData = new FormData();
       formData.append('presentation', presentationFile);
       const response = await fetch(`${API_BASE}/api/presentations`, { method: 'POST', credentials: 'include', body: formData });
       const body = await response.json();
-      if (!response.ok) throw new Error(body?.error?.message || 'Presentation upload failed');
+      if (!response.ok) {
+        if (response.status === 401) throw new Error('Your session has expired. Please log in again.');
+        throw new Error(body?.error?.message || 'Upload failed. Please try again.');
+      }
       setPresentationFile(null);
       await loadData();
       showMessage('Round 1 uploaded successfully.');
-    } catch (error) { showMessage(error.message || 'Round 1 upload failed', 'error'); }
+    } catch (error) { showMessage(error.message || 'Upload failed. Please try again.', 'error'); }
     setUploadingPresentation(false);
   }
 
