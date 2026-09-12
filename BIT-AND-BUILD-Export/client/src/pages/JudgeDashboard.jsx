@@ -47,6 +47,7 @@ function JudgeDashboard() {
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
   const [activeTab, setActiveTab] = useState('overview');
   const [teams, setTeams] = useState([]);
+  const [teamCount, setTeamCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [scores, setScores] = useState(EMPTY_SCORES);
@@ -59,10 +60,15 @@ function JudgeDashboard() {
   async function loadData() {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/judge/submissions`, { credentials: 'include' });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body?.error?.message || 'Failed to load submissions');
-      setTeams((body.submissions || []).map((item) => ({ ...item, id: item.team_id, project_title: item.title, project_description: item.description, github_link: item.repository_url, demo_link: item.deployed_url, submission_status: item.status, team_members: [], score: item.score_id ? item : null })));
+      const [response, summaryResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/judge/submissions`, { credentials: 'include' }),
+        fetch(`${API_BASE}/api/judge/teams-summary`, { credentials: 'include' }),
+      ]);
+      const [body, summary] = await Promise.all([response.json(), summaryResponse.json()]);
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to load teams');
+      if (!summaryResponse.ok) throw new Error(summary?.error?.message || 'Failed to load team count');
+      setTeams((body.submissions || []).map((item) => ({ ...item, id: item.team_id || item.registered_team_id, project_title: item.title, project_description: item.description, github_link: item.repository_url, demo_link: item.deployed_url, submission_status: item.status, team_members: [], score: item.score_id ? item : null })));
+      setTeamCount(Number(summary.teamCount) || 0);
     } catch (error) { showMessage(error.message, 'error'); }
     setLoading(false);
   }
@@ -126,7 +132,7 @@ function JudgeDashboard() {
                 <p>Review teams, score projects, and help determine the winners.</p>
               </div>
               <div className="dash-stats-grid">
-                <div className="dash-stat-card glass-card"><span className="dash-stat-icon">👥</span><span className="dash-stat-value">{teams.length}</span><span className="dash-stat-label">Total Teams</span></div>
+                <div className="dash-stat-card glass-card"><span className="dash-stat-icon">👥</span><span className="dash-stat-value">{teamCount}</span><span className="dash-stat-label">Total Teams</span></div>
                 <div className="dash-stat-card glass-card"><span className="dash-stat-icon">📦</span><span className="dash-stat-value">{submittedTeams.length}</span><span className="dash-stat-label">Submitted</span></div>
                 <div className="dash-stat-card glass-card"><span className="dash-stat-icon">✅</span><span className="dash-stat-value">{reviewed.length}</span><span className="dash-stat-label">Reviewed</span></div>
                 <div className="dash-stat-card glass-card"><span className="dash-stat-icon">⏳</span><span className="dash-stat-value">{pendingReview.length}</span><span className="dash-stat-label">Pending</span></div>
@@ -136,7 +142,7 @@ function JudgeDashboard() {
 
           {activeTab === 'teams' && (
             <div className="dash-section">
-              <h2 className="dash-title">All Teams & Submissions</h2>
+              <h2 className="dash-title">All Teams & Round 2</h2>
               <div className="dash-table-wrap glass-card">
                 <table className="dash-table">
                   <thead><tr><th>Team</th><th>Leader</th><th>College</th><th>Project</th><th>Status</th><th>Members</th><th>Action</th></tr></thead>
@@ -176,7 +182,7 @@ function JudgeDashboard() {
                     {selectedTeam.tech_stack && <p style={{marginTop: '0.25rem'}}><strong>Tech:</strong> {selectedTeam.tech_stack}</p>}
                     {selectedTeam.github_link && <p style={{marginTop: '0.25rem'}}>🔗 <a href={selectedTeam.github_link} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>{selectedTeam.github_link}</a></p>}
                     {selectedTeam.demo_link && <p style={{marginTop: '0.25rem'}}>🌐 <a href={selectedTeam.demo_link} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>{selectedTeam.demo_link}</a></p>}
-                    <div style={{marginTop: 'var(--space-4)'}}><h4>Presentation</h4>{selectedTeam.presentation_filename ? <p style={{marginTop: '0.25rem'}}>{selectedTeam.presentation_filename} · <a href={`${API_BASE}/api/judge/teams/${selectedTeam.id}/presentation`} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>View Presentation</a></p> : <p style={{color: 'var(--color-text-faint)'}}>No presentation uploaded.</p>}</div>
+                    <div style={{marginTop: 'var(--space-4)'}}><h4>Round 1</h4>{selectedTeam.presentation_filename ? <p style={{marginTop: '0.25rem'}}>{selectedTeam.presentation_filename} · <a href={`${API_BASE}/api/judge/teams/${selectedTeam.id}/presentation`} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>View Round 1</a></p> : <p style={{color: 'var(--color-text-faint)'}}>No Round 1 upload yet.</p>}</div>
                   </div>
 
                   <form className="dash-form glass-card" onSubmit={handleScore}>

@@ -28,7 +28,7 @@ const SCHEDULE = [
   { time: '11:00 AM', event: 'Hacking Begins', day: 'Day 1', status: 'upcoming' },
   { time: '2:00 PM', event: 'Mentor Round 1', day: 'Day 1', status: 'upcoming' },
   { time: '8:00 PM', event: 'Mid-Event Check-in', day: 'Day 1', status: 'upcoming' },
-  { time: '9:00 AM', event: 'Submissions Close', day: 'Day 2', status: 'upcoming' },
+  { time: '9:00 AM', event: 'Round 2 Closes', day: 'Day 2', status: 'upcoming' },
   { time: '10:00 AM', event: 'Demo & Judging', day: 'Day 2', status: 'upcoming' },
   { time: '12:00 PM', event: 'Awards Ceremony', day: 'Day 2', status: 'upcoming' },
 ];
@@ -61,6 +61,10 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
 
   // Expanded team detail
   const [expandedTeam, setExpandedTeam] = useState(null);
+  const [importFile, setImportFile] = useState(null);
+  const [importingTeams, setImportingTeams] = useState(false);
+  const [importSummary, setImportSummary] = useState(null);
+  const [revealedCredentials, setRevealedCredentials] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -132,13 +136,44 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
       await loadData();
       setIssuedCredentials({ teamName: teamForm.teamName, loginName, password });
       setTeamForm({ teamName: '', leaderName: '', leaderEmail: '', college: '' });
-      showMessage(body.credentialEmail === 'not_sent'
-        ? 'Team registered, but the credential email could not be sent. Share the credentials securely.'
-        : 'Team registered. Share these credentials securely.', body.credentialEmail === 'not_sent' ? 'error' : 'success');
+      showMessage('Team registered. Share these credentials securely.', 'success');
     } catch (err) {
       showMessage(err.message || 'Failed to register team', 'error');
     }
     setSaving(false);
+  }
+
+  async function handleImportTeams(e) {
+    e.preventDefault();
+    if (!importFile) return showMessage('Choose an Excel .xlsx or .xls file first.', 'error');
+    setImportingTeams(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      const response = await fetch(`${API_BASE}/api/admin/teams/import`, { method: 'POST', credentials: 'include', body: formData });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Team import failed');
+      setImportSummary(body);
+      setImportFile(null);
+      await loadData();
+      showMessage(`Imported ${body.imported?.length || 0} team(s).`);
+    } catch (error) { showMessage(error.message || 'Team import failed', 'error'); }
+    setImportingTeams(false);
+  }
+
+  async function viewTeamPassword(team) {
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/teams/${team.id}/credentials`, { credentials: 'include' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Password could not be recovered');
+      setRevealedCredentials({ teamId: team.id, teamName: team.team_name, ...body.credentials });
+    } catch (error) { showMessage(error.message || 'Password could not be recovered', 'error'); }
+  }
+
+  async function copyRevealedPassword() {
+    if (!revealedCredentials?.password) return;
+    try { await navigator.clipboard.writeText(revealedCredentials.password); showMessage('Password copied.'); }
+    catch { showMessage('Could not copy password', 'error'); }
   }
   async function handleGenerateJudgePassword() {
   setGeneratingJudgePassword(true);
@@ -380,7 +415,7 @@ async function handleCopyJudgePassword() {
                 <div className="dash-stat-card glass-card">
                   <span className="dash-stat-icon">📦</span>
                   <span className="dash-stat-value">{submittedCount}</span>
-                  <span className="dash-stat-label">Submissions</span>
+                  <span className="dash-stat-label">Round 2</span>
                 </div>
                 <div className="dash-stat-card glass-card">
                   <span className="dash-stat-icon">⚖️</span>
@@ -432,6 +467,15 @@ async function handleCopyJudgePassword() {
                 <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Registering...' : '🎯 Register Team'}</button>
               </form>
 
+              <form className="dash-form glass-card" onSubmit={handleImportTeams} style={{ marginTop: 'var(--space-4)' }}>
+                <h3>Import Teams from Excel</h3>
+                <p className="dash-field-hint">Expected columns: Team Name and Team Leader or Leader Name. Leader Email is optional; extra columns are ignored.</p>
+                <label className="dash-field"><span>Excel file (.xlsx or .xls)</span><input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={(e) => setImportFile(e.target.files?.[0] || null)} required /></label>
+                <button type="submit" className="btn btn--primary" disabled={importingTeams}>{importingTeams ? 'Importing...' : 'Import Teams'}</button>
+              </form>
+
+              {importSummary && <div className="dash-notice glass-card"><h3>Import Summary</h3><p>Total rows: {importSummary.totalRows} · Imported: {importSummary.imported?.length || 0} · Duplicates: {importSummary.skippedDuplicates?.length || 0} · Invalid: {importSummary.invalidRows?.length || 0}</p>{importSummary.invalidRows?.length > 0 && <ul>{importSummary.invalidRows.map((item) => <li key={`${item.row}-${item.reason}`}>Row {item.row}: {item.reason}</li>)}</ul>}{importSummary.skippedDuplicates?.length > 0 && <p className="dash-field-hint">Duplicates skipped: {importSummary.skippedDuplicates.map((item) => `row ${item.row} (${item.teamName})`).join(', ')}</p>}</div>}
+
               {issuedCredentials && (
                 <div className="dash-notice glass-card">
                   <h3>Credentials for {issuedCredentials.teamName}</h3>
@@ -448,6 +492,7 @@ async function handleCopyJudgePassword() {
                       <th>#</th>
                       <th>Team Name</th>
                       <th>Leader</th>
+                      <th>Login ID</th>
                       <th>Email</th>
                       <th>College</th>
                       <th>Members</th>
@@ -462,6 +507,7 @@ async function handleCopyJudgePassword() {
                         <td>{i + 1}</td>
                         <td><strong>{t.team_name}</strong></td>
                         <td>{t.leader_name}</td>
+                        <td style={{fontSize: 'var(--fs-micro)'}}>{t.login_name || '—'}</td>
                         <td style={{fontSize: 'var(--fs-micro)'}}>{t.leader_email}</td>
                         <td>{t.college || '—'}</td>
                         <td>{(t.team_members?.length || 0) + 1}</td>
@@ -480,12 +526,14 @@ async function handleCopyJudgePassword() {
                             {expandedTeam?.id === t.id ? 'Close' : 'View'}
                           </button>
                         </td>
-                        <td><button type="button" className="btn btn--secondary" style={{padding: '0.3rem 0.6rem', fontSize: '0.75rem'}} onClick={() => handleDeleteTeam(t)} disabled={saving}>Delete</button></td>
+                        <td><button type="button" className="btn btn--secondary" style={{padding: '0.3rem 0.6rem', fontSize: '0.75rem'}} onClick={() => viewTeamPassword(t)}>View Password</button> <button type="button" className="btn btn--secondary" style={{padding: '0.3rem 0.6rem', fontSize: '0.75rem'}} onClick={() => handleDeleteTeam(t)} disabled={saving}>Delete</button></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+
+              {revealedCredentials && <div className="dash-notice glass-card"><h3>Credentials for {revealedCredentials.teamName}</h3><p><strong>Team Login ID:</strong> {revealedCredentials.loginName}</p><p><strong>Password:</strong> <code>{revealedCredentials.password}</code></p><button type="button" className="btn btn--secondary" onClick={copyRevealedPassword}>Copy Password</button> <button type="button" className="btn btn--secondary" onClick={() => setRevealedCredentials(null)}>Hide Password</button></div>}
 
               {expandedTeam && (
                 <div className="glass-card" style={{padding: 'var(--space-5)', animation: 'slide-up 0.3s ease'}}>
@@ -516,7 +564,7 @@ async function handleCopyJudgePassword() {
                       ) : (
                         <p style={{color: 'var(--color-text-faint)', fontStyle: 'italic'}}>No submission yet</p>
                       )}
-                      <div style={{marginTop: 'var(--space-4)'}}><h4 style={{fontSize: 'var(--fs-small)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)'}}>Presentation</h4>{expandedTeam.presentation ? <p>{expandedTeam.presentation.originalFilename} · <a href={`${API_BASE}/api/admin/teams/${expandedTeam.id}/presentation`} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>View Presentation</a></p> : <p style={{color: 'var(--color-text-faint)', fontStyle: 'italic'}}>No presentation uploaded.</p>}</div>
+                      <div style={{marginTop: 'var(--space-4)'}}><h4 style={{fontSize: 'var(--fs-small)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)'}}>Round 1</h4>{expandedTeam.presentation ? <p>{expandedTeam.presentation.originalFilename} · <a href={`${API_BASE}/api/admin/teams/${expandedTeam.id}/presentation`} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>View Round 1</a></p> : <p style={{color: 'var(--color-text-faint)', fontStyle: 'italic'}}>No Round 1 upload yet.</p>}</div>
                     </div>
                   </div>
                   {expandedTeam.scores?.length > 0 && (
@@ -539,11 +587,11 @@ async function handleCopyJudgePassword() {
           {/* ENTRIES / SUBMISSIONS */}
           {activeTab === 'entries' && (
             <div className="dash-section">
-              <h2 className="dash-title">Project Submissions</h2>
+              <h2 className="dash-title">Round 2</h2>
               {teams.filter(t => t.submission_status === 'submitted').length === 0 ? (
                 <div className="dash-empty glass-card">
                   <span className="dash-empty-icon">📦</span>
-                  <p>No submissions yet.</p>
+                  <p>No Round 2 submissions yet.</p>
                 </div>
               ) : (
                 <div style={{display: 'flex', flexDirection: 'column', gap: 'var(--space-4)'}}>

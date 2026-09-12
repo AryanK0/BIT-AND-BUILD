@@ -8,10 +8,11 @@ import express from 'express';
 import helmet from 'helmet';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
+import * as XLSX from 'xlsx';
 import { z } from 'zod';
 import { createSession, deleteSession, getSession } from './auth/sessions.js';
 import { scoreRequestSchema, toDatabaseScore } from './scoring.js';
-import { createEmailService, teamCredentialsMessage } from './services/emailService.js';
+import { decryptRecoverablePassword, encryptRecoverablePassword } from './security/teamCredentialRecovery.js';
 
 const registerTeam = z.object({ teamName: z.string().trim().min(1).max(160), leaderName: z.string().trim().min(1).max(160), leaderEmail: z.string().trim().email(), college: z.string().trim().max(160).optional().or(z.literal('')), loginName: z.string().trim().min(3).max(80).regex(/^[a-zA-Z0-9-]+$/), password: z.string().min(8).max(256) }).strict();
 const participantLogin = z.object({ identifier: z.string().trim().min(1).max(80), password: z.string().min(1).max(256) }).strict();
@@ -22,10 +23,16 @@ const JUDGE_PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PRESENTATION_EXTENSIONS = new Set(['.pdf', '.ppt', '.pptx']);
 const PRESENTATION_MIME_TYPES = new Set(['application/pdf', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']);
 const norm = (value) => value.trim().toLowerCase();
+const isEmail = (value) => typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+const normalizeTeamName = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const IMPORT_PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+export function generateImportedPassword() { return Array.from({ length: 16 }, () => IMPORT_PASSWORD_ALPHABET[crypto.randomInt(IMPORT_PASSWORD_ALPHABET.length)]).join(''); }
+const normalizedColumn = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+const importedLoginName = (teamName) => `${String(teamName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 68) || 'team'}-${crypto.randomBytes(4).toString('hex')}`;
 const errors = { 400: ['BAD_REQUEST', 'Request could not be processed'], 401: ['UNAUTHORIZED', 'Invalid login credentials'], 403: ['FORBIDDEN', 'Request is not allowed'], 404: ['NOT_FOUND', 'Not found'], 409: ['CONFLICT', 'Team name or login name already exists'], 429: ['RATE_LIMITED', 'Too many requests'], 503: ['SERVICE_UNAVAILABLE', 'Service temporarily unavailable'] };
 function fail(status) { const [code, message] = errors[status] || ['INTERNAL_ERROR', 'Internal server error']; return { error: { code, message } }; }
 function errorStatus(error) { if (error?.name === 'ZodError' || error?.type === 'entity.parse.failed' || error?.name === 'MulterError') return 400; if (error?.code === '23505') return 409; return Number.isInteger(error?.statusCode) ? error.statusCode : 500; }
-function safeErrorMessage(error) { return String(error?.message || '').replace(/postgres(?:ql)?:\/\/[^\s'"`]+/gi, '[redacted-database-url]').replace(/(?:DATABASE_URL|RESEND_API_KEY|api[_ -]?key)\s*[:=]\s*\S+/gi, (match) => `${match.split(/[:=]/)[0]}=[redacted]`).replace(/re_[A-Za-z0-9_-]+/g, '[redacted]').replace(/password\s*[:=]\s*\S+/gi, 'password=[redacted]').slice(0, 500); }
+function safeErrorMessage(error) { return String(error?.message || '').replace(/postgres(?:ql)?:\/\/[^\s'"`]+/gi, '[redacted-database-url]').replace(/(?:DATABASE_URL|api[_ -]?key)\s*[:=]\s*\S+/gi, (match) => `${match.split(/[:=]/)[0]}=[redacted]`).replace(/\b(?:re|sk)_[A-Za-z0-9_-]+/g, '[redacted-token]').replace(/password\s*[:=]\s*\S+/gi, 'password=[redacted]').slice(0, 500); }
 function requirePool(pool) { if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') { const error = new Error('Database unavailable'); error.statusCode = 503; throw error; } }
 function cookieOptions(config) { return { httpOnly: true, secure: config.nodeEnv === 'production', sameSite: config.nodeEnv === 'production' ? 'none' : 'lax', path: '/', maxAge: config.sessionTtlHours * 3600000 }; }
 function userDto(user) { return { id: user.id, email: user.email, name: user.name || user.display_name, role: user.role, ...(user.teamId || user.team_id ? { teamId: user.teamId || user.team_id } : {}) }; }
@@ -33,17 +40,17 @@ async function serviceUser(pool, { email, name, role, password }) {
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   return (await pool.query(`INSERT INTO users (email, display_name, role, password_hash) VALUES ($1,$2,$3,$4) ON CONFLICT (email) DO UPDATE SET display_name=EXCLUDED.display_name, role=EXCLUDED.role, password_hash=EXCLUDED.password_hash, enabled=TRUE, updated_at=NOW() RETURNING id,email,display_name,role,team_id`, [norm(email), name, role, passwordHash])).rows[0];
 }
-function mapTeam(row) { return { id: row.id, team_name: row.team_name, leader_name: row.leader_name, leader_email: row.leader_email, college: row.college, created_at: row.created_at, updated_at: row.updated_at, project_title: row.project_title, project_description: row.project_description, tech_stack: row.tech_stack, github_link: row.github_link, demo_link: row.demo_link, submission_status: row.submission_status || 'not_submitted', presentation: row.presentation || null, team_members: row.team_members || [], scores: row.scores || [] }; }
+function mapTeam(row) { return { id: row.id, team_name: row.team_name, leader_name: row.leader_name, leader_email: row.leader_email, college: row.college, login_name: row.login_name, created_at: row.created_at, updated_at: row.updated_at, project_title: row.project_title, project_description: row.project_description, tech_stack: row.tech_stack, github_link: row.github_link, demo_link: row.demo_link, submission_status: row.submission_status || 'not_submitted', presentation: row.presentation || null, team_members: row.team_members || [], scores: row.scores || [] }; }
 export function generateJudgePassword() { return Array.from({ length: 6 }, () => JUDGE_PASSWORD_ALPHABET[crypto.randomInt(JUDGE_PASSWORD_ALPHABET.length)]).join(''); }
 export function isAllowedPresentationFile(file) { return Boolean(file) && PRESENTATION_EXTENSIONS.has(path.extname(file.originalname || '').toLowerCase()) && PRESENTATION_MIME_TYPES.has(file.mimetype); }
 function safePresentationName(filename) { return path.basename(filename).replace(/[^A-Za-z0-9._() -]/g, '_'); }
 
-export function createApp({ pool, config, logger = console, emailService } = {}) {
+export function createApp({ pool, config, logger = console } = {}) {
   if (!config) throw new Error('Server configuration is required');
-  const configuredEmailService = emailService ?? createEmailService({ apiKey: config.resendApiKey, senderEmail: config.resendSenderEmail, senderName: config.resendSenderName, logger });
   const app = express(); app.disable('x-powered-by'); if (config.nodeEnv === 'production') app.set('trust proxy', 1);
   app.use(helmet()); app.use(cors({ origin: (origin, callback) => { if (!origin || origin === config.frontendOrigin) return callback(null, true); const error = new Error('Origin denied'); error.statusCode = 403; return callback(error); }, credentials: true })); app.use(express.json({ limit: '100kb' })); app.use(cookieParser()); app.use(rateLimit({ windowMs: 900000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false }));
   const presentationUpload = multer({ storage: multer.diskStorage({ destination: (_req, _file, callback) => fs.mkdir(config.uploadDir, { recursive: true }, (error) => callback(error, config.uploadDir)), filename: (_req, file, callback) => callback(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`) }), limits: { fileSize: 20 * 1024 * 1024, files: 1 }, fileFilter: (_req, file, callback) => { if (isAllowedPresentationFile(file)) return callback(null, true); const error = new Error('Only PDF, PPT, and PPTX presentation files are allowed'); error.statusCode = 400; return callback(error); } });
+  const teamImportUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 }, fileFilter: (_req, file, callback) => { if (/\.(xlsx|xls)$/i.test(file.originalname || '')) return callback(null, true); const error = new Error('Only .xlsx or .xls team import files are allowed'); error.statusCode = 400; return callback(error); } });
   async function auth(req, res, next) { try { requirePool(pool); const session = await getSession(pool, req.cookies?.[config.sessionCookieName]); if (!session) return res.status(401).json(fail(401)); req.session = session; next(); } catch (error) { next(error); } }
   const role = (...roles) => [auth, (req, res, next) => roles.includes(req.session.role) ? next() : res.status(403).json(fail(403))];
   async function establish(res, user) { const token = await createSession(pool, user, config.sessionTtlHours); res.cookie(config.sessionCookieName, token, cookieOptions(config)); res.json({ user: userDto(user) }); }
@@ -98,37 +105,18 @@ export function createApp({ pool, config, logger = console, emailService } = {})
       await client.query("INSERT INTO users (email,display_name,role,password_hash,team_id) VALUES ($1,$2,'participant',$3,$4)", [norm(input.leaderEmail), input.leaderName, passwordHash, team.id]);
       const loginName = norm(input.loginName);
       stage = 'insert_team_credentials';
-      await client.query('INSERT INTO team_credentials (team_id,login_name,password_hash) VALUES ($1,$2,$3)', [team.id, loginName, passwordHash]);
+      // Recovery is deliberately optional so normal registration still works before
+      // the Admin configures a recovery key.  The password hash remains the only
+      // value used by participant authentication.
+      const encryptedPassword = config.teamCredentialEncryptionKey
+        ? encryptRecoverablePassword(input.password, config.teamCredentialEncryptionKey)
+        : null;
+      await client.query('INSERT INTO team_credentials (team_id,login_name,password_hash,encrypted_password) VALUES ($1,$2,$3,$4)', [team.id, loginName, passwordHash, encryptedPassword]);
       stage = 'transaction_commit';
       await client.query('COMMIT');
       committed = true;
 
-      let delivery;
-      try {
-        stage = 'credential_email';
-        delivery = await configuredEmailService.send({ to: team.leader_email, ...teamCredentialsMessage({ teamName: team.team_name, loginName, password: input.password }) });
-      } catch (error) {
-        const metadata = { senderEmail: config.resendSenderEmail, recipientEmail: team.leader_email, subject: 'Your BIT AND BUILD credentials', htmlContentExists: true };
-        const diagnostic = { providerErrorName: error?.name || 'Error', providerErrorMessage: safeErrorMessage(error), providerStatus: error?.statusCode ?? error?.status ?? null };
-        logger.error?.({ event: 'team_credential_email_error', teamId: team.id, ...metadata, ...diagnostic });
-        delivery = { ok: false, code: 'EMAIL_DELIVERY_ERROR', metadata, diagnostic };
-      }
-      if (!delivery.ok) logger.error?.({
-        event: 'team_credential_email_not_sent',
-        teamId: team.id,
-        code: delivery.code,
-        senderEmail: delivery.metadata?.senderEmail,
-        recipientEmail: delivery.metadata?.recipientEmail,
-        subject: delivery.metadata?.subject,
-        htmlContentExists: delivery.metadata?.htmlContentExists,
-        providerErrorName: delivery.diagnostic?.providerErrorName,
-        providerErrorMessage: delivery.diagnostic?.providerErrorMessage,
-        providerStatus: delivery.diagnostic?.providerStatus,
-        providerError: delivery.diagnostic?.providerError,
-        providerResponseData: delivery.diagnostic?.providerResponseData,
-        providerResponseErrors: delivery.diagnostic?.providerResponseErrors,
-      });
-      res.status(201).json({ team: { id: team.id, teamName: team.team_name, leaderName: team.leader_name, leaderEmail: team.leader_email, college: team.college }, credentials: { loginName }, credentialEmail: delivery.ok ? 'sent' : 'not_sent' });
+      res.status(201).json({ team: { id: team.id, teamName: team.team_name, leaderName: team.leader_name, leaderEmail: team.leader_email, college: team.college }, credentials: { loginName } });
     } catch (error) {
       if (client && !committed) await client.query('ROLLBACK').catch((rollbackError) => logger.error?.({ event: 'team_registration_rollback_error', errorType: rollbackError?.name || 'Error', errorMessage: safeErrorMessage(rollbackError) }));
       logger.error?.({ event: 'team_registration_error', stage, errorType: error?.name || 'Error', errorCode: error?.code, errorMessage: safeErrorMessage(error) });
@@ -138,9 +126,46 @@ export function createApp({ pool, config, logger = console, emailService } = {})
     }
   });
   const teamSelectBase = `SELECT t.*,s.title project_title,s.description project_description,s.tech_stack,s.github_url github_link,s.demo_url demo_link,COALESCE(s.status,'not_submitted') submission_status,(SELECT json_build_object('originalFilename',p.original_filename,'uploadedAt',p.uploaded_at) FROM presentations p WHERE p.team_id=t.id) presentation,COALESCE((SELECT json_agg(json_build_object('id',m.id,'member_name',m.name,'member_email',m.email,'member_role',m.role)) FROM team_members m WHERE m.team_id=t.id),'[]'::json) team_members`;
-  const teamSelect = `${teamSelectBase},COALESCE((SELECT json_agg(sc ORDER BY sc.created_at DESC) FROM scores sc WHERE sc.team_id=t.id),'[]'::json) scores FROM teams t LEFT JOIN submissions s ON s.team_id=t.id`;
-  const participantTeamSelect = `${teamSelectBase},'[]'::json AS scores FROM teams t LEFT JOIN submissions s ON s.team_id=t.id`;
+  const teamSelect = `${teamSelectBase},c.login_name,COALESCE((SELECT json_agg(sc ORDER BY sc.created_at DESC) FROM scores sc WHERE sc.team_id=t.id),'[]'::json) scores FROM teams t LEFT JOIN submissions s ON s.team_id=t.id LEFT JOIN team_credentials c ON c.team_id=t.id`;
+  const participantTeamSelect = `${teamSelectBase},c.login_name,'[]'::json AS scores FROM teams t LEFT JOIN submissions s ON s.team_id=t.id LEFT JOIN team_credentials c ON c.team_id=t.id`;
   app.get('/api/teams', ...role('organizer'), async (_req, res, next) => { try { const result = await pool.query(`${teamSelect} ORDER BY t.created_at DESC`); res.json({ teams: result.rows.map(mapTeam) }); } catch (error) { next(error); } });
+  // A compact, judge-safe aggregate is intentionally separate from the richer
+  // team/submission view. COUNT always returns exactly one row, including zero.
+  app.get('/api/judge/teams-summary', ...role('judge'), async (_req, res, next) => { try { const result = await pool.query('SELECT COUNT(*)::int AS team_count FROM teams'); res.json({ teamCount: result.rows[0]?.team_count ?? 0 }); } catch (error) { next(error); } });
+  app.post('/api/admin/teams/import', ...role('organizer'), teamImportUpload.single('file'), async (req, res, next) => { let client; try {
+    if (!config.teamCredentialEncryptionKey) return res.status(503).json({ error: { code: 'CREDENTIAL_RECOVERY_NOT_CONFIGURED', message: 'Team credential recovery is not configured' } });
+    if (!req.file?.buffer) return res.status(400).json(fail(400));
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer', dense: false });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = sheet ? XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false }) : [];
+    const invalidRows = []; const candidates = []; const seen = new Set();
+    rows.forEach((row, index) => {
+      const fields = Object.fromEntries(Object.entries(row).map(([key, value]) => [normalizedColumn(key), String(value || '').trim()]));
+      const teamName = fields.teamname || fields.team || '';
+      const leaderName = fields.teamleader || fields.leadername || fields.leader || '';
+      const leaderEmail = fields.leaderemail || fields.email || '';
+      const nameKey = normalizeTeamName(teamName);
+      if (!teamName || !leaderName || teamName.length > 160 || leaderName.length > 160) return invalidRows.push({ row: index + 2, reason: 'Team Name and Leader Name are required and must be at most 160 characters' });
+      if (seen.has(nameKey)) return invalidRows.push({ row: index + 2, reason: 'Duplicate team name in import file' });
+      seen.add(nameKey); candidates.push({ row: index + 2, teamName: teamName.replace(/\s+/g, ' '), leaderName: leaderName.replace(/\s+/g, ' '), leaderEmail: isEmail(leaderEmail) ? norm(leaderEmail) : null, nameKey });
+    });
+    requirePool(pool); client = await pool.connect(); await client.query('BEGIN');
+    await client.query('LOCK TABLE teams IN SHARE ROW EXCLUSIVE MODE');
+    const existing = new Set((await client.query('SELECT lower(trim(team_name)) AS team_name FROM teams')).rows.map((row) => normalizeTeamName(row.team_name)));
+    const imported = []; const duplicates = [];
+    for (const candidate of candidates) {
+      if (existing.has(candidate.nameKey)) { duplicates.push({ row: candidate.row, teamName: candidate.teamName }); continue; }
+      const loginName = importedLoginName(candidate.teamName); const password = generateImportedPassword(); const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
+      const team = (await client.query('INSERT INTO teams (team_name,leader_name,leader_email,college) VALUES ($1,$2,$3,$4) RETURNING *', [candidate.teamName, candidate.leaderName, candidate.leaderEmail || `${loginName}@teams.bitandbuild.local`, null])).rows[0];
+      await client.query("INSERT INTO team_members (team_id,name,email,role) VALUES ($1,$2,$3,'Leader')", [team.id, candidate.leaderName, candidate.leaderEmail]);
+      await client.query("INSERT INTO users (email,display_name,role,password_hash,team_id) VALUES ($1,$2,'participant',$3,$4)", [candidate.leaderEmail || `${loginName}@teams.bitandbuild.local`, candidate.leaderName, passwordHash, team.id]);
+      await client.query('INSERT INTO team_credentials (team_id,login_name,password_hash,encrypted_password) VALUES ($1,$2,$3,$4)', [team.id, loginName, passwordHash, encryptRecoverablePassword(password, config.teamCredentialEncryptionKey)]);
+      existing.add(candidate.nameKey); imported.push({ teamId: team.id, teamName: team.team_name, leaderName: team.leader_name, loginName });
+    }
+    await client.query('COMMIT'); logger.info?.({ event: 'team_import_completed', imported: imported.length, duplicates: duplicates.length, invalid: invalidRows.length });
+    res.status(201).json({ totalRows: rows.length, imported, skippedDuplicates: duplicates, invalidRows });
+  } catch (error) { if (client) await client.query('ROLLBACK').catch(() => {}); next(error); } finally { client?.release(); } });
+  app.get('/api/admin/teams/:teamId/credentials', ...role('organizer'), async (req, res, next) => { try { if (!config.teamCredentialEncryptionKey) return res.status(503).json({ error: { code: 'CREDENTIAL_RECOVERY_NOT_CONFIGURED', message: 'Team credential recovery is not configured' } }); const record = (await pool.query('SELECT t.team_name,c.login_name,c.encrypted_password FROM teams t JOIN team_credentials c ON c.team_id=t.id WHERE t.id=$1', [req.params.teamId])).rows[0]; if (!record) return res.status(404).json(fail(404)); if (!record.encrypted_password) return res.status(409).json({ error: { code: 'CREDENTIAL_NOT_RECOVERABLE', message: 'This existing team password cannot be recovered securely' } }); const password = decryptRecoverablePassword(record.encrypted_password, config.teamCredentialEncryptionKey); logger.info?.({ event: 'team_credential_viewed', actorId: req.session.id, teamId: req.params.teamId }); res.json({ credentials: { loginName: record.login_name, password } }); } catch (error) { next(error); } });
   app.delete('/api/teams/:teamId', ...role('organizer'), async (req, res, next) => { let client; try { requirePool(pool); client = await pool.connect(); await client.query('BEGIN'); const team = (await client.query('SELECT id,team_name FROM teams WHERE id=$1 FOR UPDATE', [req.params.teamId])).rows[0]; if (!team) { await client.query('ROLLBACK'); return res.status(404).json(fail(404)); } /* Participant users must be removed before their team: the schema intentionally requires every participant to own a team. Sessions cascade from users; team members, credentials, submissions, and scores cascade from teams. */ await client.query("DELETE FROM users WHERE team_id=$1 AND role='participant'", [team.id]); await client.query('DELETE FROM teams WHERE id=$1', [team.id]); await client.query('COMMIT'); res.json({ deletedTeam: { id: team.id, teamName: team.team_name } }); } catch (error) { if (client) await client.query('ROLLBACK').catch(() => {}); next(error); } finally { client?.release(); } });
   app.get('/api/teams/me', ...role('participant'), async (req, res, next) => { try { const result = await pool.query(`${participantTeamSelect} WHERE t.id=$1`, [req.session.teamId]); if (!result.rows[0]) return res.status(404).json(fail(404)); res.json({ team: mapTeam(result.rows[0]) }); } catch (error) { next(error); } });
   const presentationMetadata = `SELECT id,team_id,original_filename,stored_filename,mime_type,uploaded_at,updated_at FROM presentations WHERE team_id=$1`;
@@ -159,7 +184,7 @@ export function createApp({ pool, config, logger = console, emailService } = {})
   app.get('/api/submissions/me', ...role('participant'), async (req, res, next) => { try { const result = await pool.query(`${submissionSelect} WHERE s.team_id=$1`, [req.session.teamId]); res.json({ submissions: result.rows }); } catch (error) { next(error); } });
   app.put('/api/submissions/:id', auth, async (req, res, next) => { try { const input = submission.parse(req.body); const isParticipant = req.session.role === 'participant'; if (!isParticipant && req.session.role !== 'organizer') return res.status(403).json(fail(403)); const values = [input.problemStatementId,input.projectTitle,input.description,input.techStack || null,input.repositoryUrl || null,input.deployedUrl || null,input.status || 'submitted',req.params.id]; const ownership = isParticipant ? ' AND team_id=$9 AND status <> \'final\'' : ''; if (isParticipant) values.push(req.session.teamId); const result = await pool.query(`UPDATE submissions SET problem_statement_id=$1,title=$2,description=$3,tech_stack=$4,github_url=$5,demo_url=$6,status=$7,submitted_at=CASE WHEN $7='submitted' THEN NOW() ELSE submitted_at END,updated_at=NOW() WHERE id=$8${ownership} RETURNING *`, values); if (!result.rows[0]) return res.status(404).json(fail(404)); res.json({ submission: result.rows[0] }); } catch (error) { next(error); } });
   app.get('/api/admin/submissions', ...role('organizer'), async (_req, res, next) => { try { const result = await pool.query(`${submissionSelect} ORDER BY s.updated_at DESC`); res.json({ submissions: result.rows }); } catch (error) { next(error); } });
-  app.get('/api/judge/submissions', ...role('judge'), async (req, res, next) => { try { const result = await pool.query(`SELECT s.id,s.team_id,s.problem_statement_id,s.title,s.description,s.tech_stack,s.github_url AS repository_url,s.demo_url AS deployed_url,s.status,s.submitted_at,s.created_at,s.updated_at,t.team_name,t.leader_name,p.title AS problem_statement_title,pr.original_filename AS presentation_filename,pr.uploaded_at AS presentation_uploaded_at,sc.id AS score_id,sc.completeness,sc.technical_execution,sc.innovation_creativity,sc.applicability_scalability,sc.ui_ux,sc.bonus_features,sc.presentation,sc.work_distribution,sc.weighted_scores,sc.final_score,sc.comments FROM submissions s JOIN teams t ON t.id=s.team_id LEFT JOIN problem_statements p ON p.id=s.problem_statement_id LEFT JOIN presentations pr ON pr.team_id=s.team_id LEFT JOIN scores sc ON sc.team_id=s.team_id AND sc.judge_id=$1 WHERE s.status IN ('submitted','under_review','final') ORDER BY s.submitted_at DESC`, [req.session.id]); res.json({ submissions: result.rows }); } catch (error) { next(error); } });
+  app.get('/api/judge/submissions', ...role('judge'), async (req, res, next) => { try { const result = await pool.query(`SELECT s.id,s.team_id,s.problem_statement_id,s.title,s.description,s.tech_stack,s.github_url AS repository_url,s.demo_url AS deployed_url,COALESCE(s.status,'not_submitted') AS status,s.submitted_at,s.created_at,s.updated_at,t.id AS registered_team_id,t.team_name,t.leader_name,p.title AS problem_statement_title,pr.original_filename AS presentation_filename,pr.uploaded_at AS presentation_uploaded_at,sc.id AS score_id,sc.completeness,sc.technical_execution,sc.innovation_creativity,sc.applicability_scalability,sc.ui_ux,sc.bonus_features,sc.presentation,sc.work_distribution,sc.weighted_scores,sc.final_score,sc.comments FROM teams t LEFT JOIN submissions s ON s.team_id=t.id LEFT JOIN problem_statements p ON p.id=s.problem_statement_id LEFT JOIN presentations pr ON pr.team_id=t.id LEFT JOIN scores sc ON sc.team_id=t.id AND sc.judge_id=$1 ORDER BY t.created_at DESC`, [req.session.id]); res.json({ submissions: result.rows }); } catch (error) { next(error); } });
   app.post('/api/scores', ...role('judge'), async (req, res, next) => { try { const payload = scoreRequestSchema.parse(req.body); const submissionRecord = (await pool.query("SELECT id FROM submissions WHERE team_id=$1 AND status IN ('submitted','under_review','final')", [payload.team_id])).rows[0]; if (!submissionRecord) return res.status(404).json(fail(404)); const score = toDatabaseScore(payload); const values = [score.teamId,submissionRecord.id,req.session.id,req.session.email,score.innovationCreativity,score.technicalExecution,score.uiUx,score.presentation,score.completeness,score.technicalExecution,score.innovationCreativity,score.applicabilityScalability,score.uiUx,score.bonusFeatures,score.workDistribution,score.weightedScores,score.finalScore,score.comments]; const result = await pool.query(`INSERT INTO scores (team_id,submission_id,judge_id,judge_email,innovation,technical,design,presentation,completeness,technical_execution,innovation_creativity,applicability_scalability,ui_ux,bonus_features,work_distribution,weighted_scores,final_score,comments) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT (team_id,judge_email) DO UPDATE SET submission_id=EXCLUDED.submission_id,judge_id=EXCLUDED.judge_id,innovation=EXCLUDED.innovation,technical=EXCLUDED.technical,design=EXCLUDED.design,presentation=EXCLUDED.presentation,completeness=EXCLUDED.completeness,technical_execution=EXCLUDED.technical_execution,innovation_creativity=EXCLUDED.innovation_creativity,applicability_scalability=EXCLUDED.applicability_scalability,ui_ux=EXCLUDED.ui_ux,bonus_features=EXCLUDED.bonus_features,work_distribution=EXCLUDED.work_distribution,weighted_scores=EXCLUDED.weighted_scores,final_score=EXCLUDED.final_score,comments=EXCLUDED.comments,updated_at=NOW() RETURNING *`, values); res.json({ score: result.rows[0] }); } catch (error) { next(error); } });
   app.get('/api/admin/scores', ...role('organizer'), async (_req, res, next) => { try { const result = await pool.query(`SELECT sc.*,t.team_name,s.title AS submission_title FROM scores sc JOIN teams t ON t.id=sc.team_id LEFT JOIN submissions s ON s.id=sc.submission_id ORDER BY sc.updated_at DESC`); res.json({ scores: result.rows }); } catch (error) { next(error); } });
   app.get('/api/admin/judge-scoring', ...role('organizer'), async (req, res, next) => { try { const judgeId = typeof req.query.judgeId === 'string' ? req.query.judgeId.trim().toUpperCase() : ''; const result = await pool.query(`SELECT j.judge_id,t.id AS team_id,t.team_name,sc.final_score,sc.created_at,sc.updated_at FROM scores sc JOIN judges j ON j.user_id=sc.judge_id JOIN teams t ON t.id=sc.team_id WHERE ($1='' OR j.judge_id=$1) ORDER BY sc.updated_at DESC`, [judgeId]); res.json({ activity: result.rows.map((row) => ({ judgeId: row.judge_id, teamId: row.team_id, teamName: row.team_name, score: Number(row.final_score), scoredAt: row.updated_at, createdAt: row.created_at })) }); } catch (error) { next(error); } });

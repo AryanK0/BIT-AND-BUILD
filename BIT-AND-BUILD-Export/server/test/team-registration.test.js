@@ -1,3 +1,4 @@
+import argon2 from 'argon2';
 import request from 'supertest';
 import { describe, expect, test, vi } from 'vitest';
 import { createApp } from '../src/app.js';
@@ -34,36 +35,45 @@ function register(app) {
   return request(app).post('/api/teams').set('Cookie', 'bb_session=valid-session').send(payload);
 }
 
-describe('team registration and transactional email delivery', () => {
-  test('commits the team and sends its credentials through the injected email service', async () => {
+describe('team registration', () => {
+  test('commits the team and returns its login name without email configuration', async () => {
     const pool = makePool();
-    const send = vi.fn().mockResolvedValue({ ok: true, id: 'email_123' });
-    const app = createApp({ pool, config, emailService: { send }, logger: { error: vi.fn() } });
+    const app = createApp({ pool, config, logger: { error: vi.fn() } });
     const response = await register(app);
     expect(response.status).toBe(201);
-    expect(response.body).toMatchObject({ credentials: { loginName: payload.loginName }, credentialEmail: 'sent' });
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: team.leader_email, subject: expect.stringMatching(/credentials/i) }));
+    expect(response.body).toMatchObject({ credentials: { loginName: payload.loginName } });
+    expect(Object.keys(response.body).sort()).toEqual(['credentials', 'team']);
     expect(pool.queries).toContain('COMMIT');
     expect(pool.client.release).toHaveBeenCalledOnce();
   });
 
-  test('keeps the committed team and reports email delivery failure without leaking credentials', async () => {
+  test('rejects invalid registration data before opening a transaction', async () => {
     const pool = makePool();
-    const logger = { error: vi.fn() };
-    const app = createApp({ pool, config, emailService: { send: vi.fn().mockResolvedValue({ ok: false, code: 'EMAIL_DELIVERY_ERROR', metadata: { senderEmail: 'verified@example.com', recipientEmail: team.leader_email, subject: 'Your BIT AND BUILD credentials', htmlContentExists: true }, diagnostic: { providerErrorName: 'validation_error', providerErrorMessage: 'Sender domain is not verified', providerStatus: 422, providerError: { name: 'validation_error', message: 'Sender domain is not verified', statusCode: 422 }, providerResponseData: null, providerResponseErrors: [{ field: 'from', message: 'Sender domain is not verified' }] } }) }, logger });
-    const response = await register(app);
-    expect(response.status).toBe(201);
-    expect(response.body.credentialEmail).toBe('not_sent');
-    expect(response.text).not.toContain(payload.password);
-    expect(pool.queries).toContain('COMMIT');
-    expect(JSON.stringify(logger.error.mock.calls)).not.toContain(payload.password);
-    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ event: 'team_credential_email_not_sent', senderEmail: 'verified@example.com', recipientEmail: team.leader_email, subject: 'Your BIT AND BUILD credentials', htmlContentExists: true, providerErrorName: 'validation_error', providerStatus: 422, providerError: expect.objectContaining({ name: 'validation_error' }) }));
+    const app = createApp({ pool, config, logger: { error: vi.fn() } });
+    const response = await request(app).post('/api/teams').set('Cookie', 'bb_session=valid-session').send({ ...payload, leaderEmail: 'not-an-email' });
+    expect(response.status).toBe(400);
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  test('accepts the stored team credential at participant login', async () => {
+    const passwordHash = await argon2.hash(payload.password, { type: argon2.argon2id });
+    const pool = {
+      query: vi.fn(async (sql) => {
+        if (sql.includes('FROM team_credentials')) return { rows: [{ team_id: team.id, password_hash: passwordHash, id: 'participant-id', email: team.leader_email, display_name: team.leader_name, enabled: true }] };
+        return { rows: [] };
+      }),
+      connect: vi.fn(),
+    };
+    const app = createApp({ pool, config, logger: { error: vi.fn() } });
+    const response = await request(app).post('/api/auth/participant/login').send({ identifier: payload.loginName, password: payload.password });
+    expect(response.status).toBe(200);
+    expect(response.body.user).toMatchObject({ id: 'participant-id', email: team.leader_email, role: 'participant', teamId: team.id });
   });
 
   test('rolls back database failures, returns a safe error, and redacts secrets from logs', async () => {
     const pool = makePool({ databaseError: Object.assign(new Error('connection rejected postgresql://db-user:db-secret@db.example/database re_sensitive-token password=secret-value'), { code: '08006' }) });
     const logger = { error: vi.fn() };
-    const app = createApp({ pool, config, emailService: { send: vi.fn() }, logger });
+    const app = createApp({ pool, config, logger });
     const response = await register(app);
     expect(response.status).toBe(500);
     expect(response.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });

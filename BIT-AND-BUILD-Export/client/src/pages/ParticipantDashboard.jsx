@@ -111,9 +111,9 @@ function ParticipantDashboard() {
       const response = await fetch(`${API_BASE}/api/submissions`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ problemStatementId: selectedProblemStatement, projectTitle, description: projectDesc, techStack, repositoryUrl: githubLink, deployedUrl: demoLink, status: 'submitted' }) });
       const body = await response.json(); if (!response.ok) throw new Error(body?.error?.message || 'Submission failed');
       await loadData();
-      showMessage('Project submitted successfully! 🎉');
+      showMessage('Round 2 submitted successfully! 🎉');
     } catch (err) {
-      showMessage(err.message || 'Submission failed', 'error');
+      showMessage(err.message || 'Round 2 submission failed', 'error');
     }
     setSaving(false);
   }
@@ -144,8 +144,8 @@ function ParticipantDashboard() {
       if (!response.ok) throw new Error(body?.error?.message || 'Presentation upload failed');
       setPresentationFile(null);
       await loadData();
-      showMessage('Presentation uploaded successfully.');
-    } catch (error) { showMessage(error.message, 'error'); }
+      showMessage('Round 1 uploaded successfully.');
+    } catch (error) { showMessage(error.message || 'Round 1 upload failed', 'error'); }
     setUploadingPresentation(false);
   }
 
@@ -176,7 +176,7 @@ function ParticipantDashboard() {
                 <div className="dash-stat-card glass-card">
                   <span className="dash-stat-icon">📦</span>
                   <span className="dash-stat-value">{team?.submission_status === 'submitted' ? '✅' : '⏳'}</span>
-                  <span className="dash-stat-label">Submission</span>
+                  <span className="dash-stat-label">Round 2</span>
                 </div>
                 <div className="dash-stat-card glass-card">
                   <span className="dash-stat-icon">🏆</span>
@@ -292,16 +292,16 @@ function ParticipantDashboard() {
           {/* SUBMISSION */}
           {activeTab === 'submission' && (
             <div className="dash-section">
-              <h2 className="dash-title">Project Submission</h2>
+              <h2 className="dash-title">Round 2</h2>
 
               {!team ? (
                 <div className="dash-notice glass-card">
-                  <p>Register your team first before submitting a project.</p>
+                  <p>Register your team first before submitting your Round 2 project.</p>
                 </div>
               ) : (
                 <form className="dash-form glass-card" onSubmit={handleSubmission}>
                   {team.submission_status === 'submitted' && (
-                    <div className="dash-submitted-badge">✅ Submitted</div>
+                    <div className="dash-submitted-badge">✅ Round 2 Submitted</div>
                   )}
                   <div className="dash-form-grid">
                     <label className="dash-field dash-field--full">
@@ -330,7 +330,7 @@ function ParticipantDashboard() {
                       💾 Save Draft
                     </button>
                     <button type="submit" className="btn btn--primary" disabled={saving}>
-                      {saving ? 'Submitting...' : '🚀 Submit Project'}
+                      {saving ? 'Submitting...' : '🚀 Submit Round 2'}
                     </button>
                   </div>
                 </form>
@@ -340,13 +340,13 @@ function ParticipantDashboard() {
 
           {activeTab === 'presentation' && (
             <div className="dash-section">
-              <h2 className="dash-title">Presentation</h2>
-              {!team ? <div className="dash-notice glass-card"><p>Your team must be registered before uploading a presentation.</p></div> : (
+              <h2 className="dash-title">Round 1</h2>
+              {!team ? <div className="dash-notice glass-card"><p>Your team must be registered before uploading Round 1.</p></div> : (
                 <form className="dash-form glass-card" onSubmit={handlePresentationUpload}>
-                  <h3>{team.presentation ? 'Replace Presentation' : 'Upload Presentation'}</h3>
-                  {team.presentation ? <div className="dash-submitted-badge">Presentation Uploaded ✓<br /><span>{team.presentation.originalFilename}</span><br /><a href={`${API_BASE}/api/presentations/me/file`} target="_blank" rel="noreferrer">View Presentation</a></div> : <p className="dash-field-hint">No presentation uploaded yet.</p>}
+                  <h3>{team.presentation ? 'Replace Round 1 Upload' : 'Upload Round 1'}</h3>
+                  {team.presentation ? <div className="dash-submitted-badge">Round 1 Uploaded ✓<br /><span>{team.presentation.originalFilename}</span><br /><a href={`${API_BASE}/api/presentations/me/file`} target="_blank" rel="noreferrer">View Round 1</a></div> : <p className="dash-field-hint">No Round 1 upload yet.</p>}
                   <label className="dash-field"><span>PDF, PPT, or PPTX (max 20 MB)</span><input type="file" accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={(e) => setPresentationFile(e.target.files?.[0] || null)} required /></label>
-                  <button type="submit" className="btn btn--primary" disabled={uploadingPresentation}>{uploadingPresentation ? 'Uploading...' : team.presentation ? 'Replace Presentation' : 'Upload Presentation'}</button>
+                  <button type="submit" className="btn btn--primary" disabled={uploadingPresentation}>{uploadingPresentation ? 'Uploading...' : team.presentation ? 'Replace Round 1 Upload' : 'Upload Round 1'}</button>
                 </form>
               )}
             </div>

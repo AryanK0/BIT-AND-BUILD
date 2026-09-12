@@ -7,8 +7,8 @@ const NAV_ITEMS = {
   participant: [
     { id: 'overview', label: 'Overview', icon: '🏠' },
     { id: 'team', label: 'My Team', icon: '👥' },
-    { id: 'submission', label: 'Submission', icon: '📦' },
-    { id: 'presentation', label: 'Presentation', icon: '📄' },
+    { id: 'presentation', label: 'Round 1', icon: '📄' },
+    { id: 'submission', label: 'Round 2', icon: '📦' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
   ],
   judge: [
@@ -21,7 +21,7 @@ const NAV_ITEMS = {
     { id: 'problems', label: 'Problems', icon: '🧩' },
     { id: 'overview', label: 'Overview', icon: '🏠' },
     { id: 'teams', label: 'All Teams', icon: '👥' },
-    { id: 'entries', label: 'Submissions', icon: '📦' },
+    { id: 'entries', label: 'Round 2', icon: '📦' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
     { id: 'schedule', label: 'Schedule', icon: '📅' },
   ],
