@@ -110,7 +110,7 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
   }
 
   const submittedCount = teams.filter(t => t.submission_status === 'submitted').length;
-  const totalMembers = teams.reduce((sum, t) => sum + (t.team_members?.length || 0) + 1, 0);
+  const totalMembers = teams.reduce((sum, t) => sum + (t.team_members?.length || 0), 0);
   const scoredTeams = teams.filter(t => t.scores?.length > 0);
 
   function createLoginName(teamName) {
@@ -539,7 +539,7 @@ async function handleCopyJudgePassword() {
                         <td>{t.leader_name}</td>
                         <td style={{fontSize: 'var(--fs-micro)'}}>{t.login_name || '—'}</td>
                         <td style={{fontSize: 'var(--fs-micro)'}}>{t.leader_email}</td>
-                        <td>{(t.team_members?.length || 0) + 1}</td>
+                        <td>{t.team_members?.length || 0}</td>
                         <td>
                           <span className={`dash-priority-badge ${t.submission_status === 'submitted' ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>
                             {t.submission_status === 'submitted' ? 'Submitted' : 'Pending'}

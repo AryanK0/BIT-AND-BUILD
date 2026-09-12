@@ -1,7 +1,7 @@
 import request from 'supertest';
 import * as XLSX from 'xlsx';
 import { describe, expect, test, vi } from 'vitest';
-import { createApp, generateImportedPassword } from '../src/app.js';
+import { createApp, generateImportedPassword, importedMembers } from '../src/app.js';
 import { encryptRecoverablePassword } from '../src/security/teamCredentialRecovery.js';
 
 const key = 'a'.repeat(64);
@@ -59,6 +59,11 @@ describe('Admin team credentials', () => {
 });
 
 describe('Admin Excel import', () => {
+  test('normalizes member columns and list cells without counting the leader twice', () => {
+    expect(importedMembers({ members: 'Miles Morales, Gwen Stacy;  Peter Parker | Gwen Stacy', member1: '  Hobie Brown  ', member2: 'N/A' }, 'Miles Morales'))
+      .toEqual(['Gwen Stacy', 'Peter Parker', 'Hobie Brown']);
+  });
+
   test('explains that import requires the server encryption key, not Google credentials', async () => {
     const app = createApp({ pool: poolFor('organizer', async () => ({ rows: [] })), config: { ...config, teamCredentialEncryptionKey: undefined }, logger: { error: vi.fn() } });
     const response = await request(app).post('/api/admin/teams/import').set('Cookie', 'bb_session=valid');

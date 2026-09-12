@@ -67,7 +67,7 @@ function JudgeDashboard() {
       const [body, summary] = await Promise.all([response.json(), summaryResponse.json()]);
       if (!response.ok) throw new Error(body?.error?.message || 'Failed to load teams');
       if (!summaryResponse.ok) throw new Error(summary?.error?.message || 'Failed to load team count');
-      setTeams((body.submissions || []).map((item) => ({ ...item, id: item.team_id || item.registered_team_id, project_title: item.title, project_description: item.description, github_link: item.repository_url, demo_link: item.deployed_url, submission_status: item.status, team_members: [], score: item.score_id ? item : null })));
+      setTeams((body.submissions || []).map((item) => ({ ...item, id: item.team_id || item.registered_team_id, project_title: item.title, project_description: item.description, github_link: item.repository_url, demo_link: item.deployed_url, submission_status: item.status, score: item.score_id ? item : null })));
       setTeamCount(Number(summary.teamCount) || 0);
     } catch (error) { showMessage(error.message, 'error'); }
     setLoading(false);
@@ -154,7 +154,7 @@ function JudgeDashboard() {
                         <td>{t.college || '—'}</td>
                         <td>{t.project_title || <em style={{color: 'var(--color-text-faint)'}}>Not submitted</em>}</td>
                         <td><span className={`dash-priority-badge ${t.submission_status === 'submitted' ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>{t.submission_status === 'submitted' ? '✅ Submitted' : '⏳ Pending'}</span></td>
-                        <td>{(t.team_members?.length || 0) + 1}</td>
+                        <td>{t.member_count || 0}</td>
                         <td>{t.submission_status === 'submitted' && <button className="btn btn--secondary" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem'}} onClick={() => selectTeamForScoring(t)}>Score</button>}</td>
                       </tr>
                     ))}

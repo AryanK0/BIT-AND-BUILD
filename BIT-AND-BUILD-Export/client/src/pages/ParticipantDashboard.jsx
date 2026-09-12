@@ -170,7 +170,7 @@ function ParticipantDashboard() {
               <div className="dash-stats-grid">
                 <div className="dash-stat-card glass-card">
                   <span className="dash-stat-icon">👥</span>
-                  <span className="dash-stat-value">{team ? (team.team_members?.length || 0) + 1 : 0}</span>
+                  <span className="dash-stat-value">{team?.team_members?.length || 0}</span>
                   <span className="dash-stat-label">Team Members</span>
                 </div>
                 <div className="dash-stat-card glass-card">
