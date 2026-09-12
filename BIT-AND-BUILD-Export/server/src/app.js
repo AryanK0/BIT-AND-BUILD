@@ -25,7 +25,7 @@ const norm = (value) => value.trim().toLowerCase();
 const errors = { 400: ['BAD_REQUEST', 'Request could not be processed'], 401: ['UNAUTHORIZED', 'Invalid login credentials'], 403: ['FORBIDDEN', 'Request is not allowed'], 404: ['NOT_FOUND', 'Not found'], 409: ['CONFLICT', 'Team name or login name already exists'], 429: ['RATE_LIMITED', 'Too many requests'], 503: ['SERVICE_UNAVAILABLE', 'Service temporarily unavailable'] };
 function fail(status) { const [code, message] = errors[status] || ['INTERNAL_ERROR', 'Internal server error']; return { error: { code, message } }; }
 function errorStatus(error) { if (error?.name === 'ZodError' || error?.type === 'entity.parse.failed' || error?.name === 'MulterError') return 400; if (error?.code === '23505') return 409; return Number.isInteger(error?.statusCode) ? error.statusCode : 500; }
-function safeErrorMessage(error) { return String(error?.message || '').replace(/re_[A-Za-z0-9_-]+/g, '[redacted]').replace(/password\s*[:=]\s*\S+/gi, 'password=[redacted]').slice(0, 500); }
+function safeErrorMessage(error) { return String(error?.message || '').replace(/postgres(?:ql)?:\/\/[^\s'"`]+/gi, '[redacted-database-url]').replace(/(?:DATABASE_URL|RESEND_API_KEY|api[_ -]?key)\s*[:=]\s*\S+/gi, (match) => `${match.split(/[:=]/)[0]}=[redacted]`).replace(/re_[A-Za-z0-9_-]+/g, '[redacted]').replace(/password\s*[:=]\s*\S+/gi, 'password=[redacted]').slice(0, 500); }
 function requirePool(pool) { if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') { const error = new Error('Database unavailable'); error.statusCode = 503; throw error; } }
 function cookieOptions(config) { return { httpOnly: true, secure: config.nodeEnv === 'production', sameSite: config.nodeEnv === 'production' ? 'none' : 'lax', path: '/', maxAge: config.sessionTtlHours * 3600000 }; }
 function userDto(user) { return { id: user.id, email: user.email, name: user.name || user.display_name, role: user.role, ...(user.teamId || user.team_id ? { teamId: user.teamId || user.team_id } : {}) }; }
@@ -80,22 +80,32 @@ export function createApp({ pool, config, logger = console, emailService } = {})
   app.post('/api/teams', ...role('organizer'), async (req, res, next) => {
     let client;
     let committed = false;
+    let stage = 'request_validation';
     try {
       const input = registerTeam.parse(req.body);
+      stage = 'database_connect';
       requirePool(pool);
       client = await pool.connect();
+      stage = 'transaction_begin';
       await client.query('BEGIN');
+      stage = 'password_hash';
       const passwordHash = await argon2.hash(input.password, { type: argon2.argon2id });
+      stage = 'insert_team';
       const team = (await client.query('INSERT INTO teams (team_name,leader_name,leader_email,college) VALUES ($1,$2,$3,$4) RETURNING *', [input.teamName, input.leaderName, norm(input.leaderEmail), input.college || null])).rows[0];
+      stage = 'insert_team_member';
       await client.query("INSERT INTO team_members (team_id,name,email,role) VALUES ($1,$2,$3,'Leader')", [team.id, input.leaderName, norm(input.leaderEmail)]);
-      await client.query("INSERT INTO users (email,display_name,role,password_hash,team_id) VALUES ($1,$2,$3,'participant',$3,$4)", [norm(input.leaderEmail), input.leaderName, passwordHash, team.id]);
+      stage = 'insert_participant';
+      await client.query("INSERT INTO users (email,display_name,role,password_hash,team_id) VALUES ($1,$2,'participant',$3,$4)", [norm(input.leaderEmail), input.leaderName, passwordHash, team.id]);
       const loginName = norm(input.loginName);
+      stage = 'insert_team_credentials';
       await client.query('INSERT INTO team_credentials (team_id,login_name,password_hash) VALUES ($1,$2,$3)', [team.id, loginName, passwordHash]);
+      stage = 'transaction_commit';
       await client.query('COMMIT');
       committed = true;
 
       let delivery;
       try {
+        stage = 'credential_email';
         delivery = await configuredEmailService.send({ to: team.leader_email, ...teamCredentialsMessage({ teamName: team.team_name, loginName, password: input.password }) });
       } catch (error) {
         logger.error?.({ event: 'team_credential_email_error', teamId: team.id, errorType: error?.name || 'Error', errorMessage: safeErrorMessage(error) });
@@ -105,7 +115,7 @@ export function createApp({ pool, config, logger = console, emailService } = {})
       res.status(201).json({ team: { id: team.id, teamName: team.team_name, leaderName: team.leader_name, leaderEmail: team.leader_email, college: team.college }, credentials: { loginName }, credentialEmail: delivery.ok ? 'sent' : 'not_sent' });
     } catch (error) {
       if (client && !committed) await client.query('ROLLBACK').catch((rollbackError) => logger.error?.({ event: 'team_registration_rollback_error', errorType: rollbackError?.name || 'Error', errorMessage: safeErrorMessage(rollbackError) }));
-      logger.error?.({ event: 'team_registration_error', errorType: error?.name || 'Error', errorCode: error?.code, errorMessage: safeErrorMessage(error) });
+      logger.error?.({ event: 'team_registration_error', stage, errorType: error?.name || 'Error', errorCode: error?.code, errorMessage: safeErrorMessage(error) });
       next(error);
     } finally {
       client?.release();

@@ -15,6 +15,9 @@ function makePool({ databaseError } = {}) {
       queries.push(sql);
       if (databaseError && sql.startsWith('INSERT INTO teams')) throw databaseError;
       if (sql.startsWith('INSERT INTO teams')) return { rows: [team] };
+      if (sql.startsWith('INSERT INTO users')) {
+        expect(sql).toBe("INSERT INTO users (email,display_name,role,password_hash,team_id) VALUES ($1,$2,'participant',$3,$4)");
+      }
       return { rows: [] };
     }),
     release: vi.fn(),
@@ -57,7 +60,7 @@ describe('team registration and transactional email delivery', () => {
   });
 
   test('rolls back database failures, returns a safe error, and redacts secrets from logs', async () => {
-    const pool = makePool({ databaseError: Object.assign(new Error('connection rejected re_sensitive-token password=secret-value'), { code: '08006' }) });
+    const pool = makePool({ databaseError: Object.assign(new Error('connection rejected postgresql://db-user:db-secret@db.example/database re_sensitive-token password=secret-value'), { code: '08006' }) });
     const logger = { error: vi.fn() };
     const app = createApp({ pool, config, emailService: { send: vi.fn() }, logger });
     const response = await register(app);
@@ -65,6 +68,8 @@ describe('team registration and transactional email delivery', () => {
     expect(response.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
     expect(pool.queries).toContain('ROLLBACK');
     const logs = JSON.stringify(logger.error.mock.calls);
+    expect(logs).toContain('insert_team');
+    expect(logs).not.toContain('db-secret');
     expect(logs).not.toContain('re_sensitive-token');
     expect(logs).not.toContain('secret-value');
     expect(logs).not.toContain(payload.password);
