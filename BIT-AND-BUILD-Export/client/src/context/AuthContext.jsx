@@ -21,22 +21,12 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('bb_auth');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setUser(parsed.user);
-        setRole(parsed.role);
-      } catch { /* ignore */ }
-    }
-
     api('/api/auth/me')
       .then((data) => {
         setUser(data.user);
         setRole(data.user?.role);
-        sessionStorage.setItem('bb_auth', JSON.stringify(data));
       })
-      .catch(() => {})
+      .catch(() => { setUser(null); setRole(null); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -49,13 +39,6 @@ export function AuthProvider({ children }) {
         });
       setUser(data.user);
 setRole(data.user?.role || data.role);
-sessionStorage.setItem(
-  'bb_auth',
-  JSON.stringify({
-    user: data.user,
-    role: data.user?.role || data.role,
-  })
-);
 return { success: true };
       }
 
@@ -66,13 +49,6 @@ return { success: true };
         });
 setUser(data.user);
 setRole(data.user?.role || data.role);
-sessionStorage.setItem(
-  'bb_auth',
-  JSON.stringify({
-    user: data.user,
-    role: data.user?.role || data.role,
-  })
-);
 return { success: true };
       }
 
@@ -82,7 +58,6 @@ return { success: true };
         });
         const u = data.user;
         setUser(u); setRole(u.role);
-        sessionStorage.setItem('bb_auth', JSON.stringify({ user: u, role: 'participant' }));
         return { success: true };
       }
 
@@ -96,7 +71,7 @@ return { success: true };
 
   const logout = useCallback(async () => {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* local cleanup still happens */ }
-    setUser(null); setRole(null); sessionStorage.removeItem('bb_auth');
+    setUser(null); setRole(null);
   }, [role]);
 
   const value = { user, role, loading, isAuthenticated: !!user, login, signup, logout, apiBase: API_BASE };

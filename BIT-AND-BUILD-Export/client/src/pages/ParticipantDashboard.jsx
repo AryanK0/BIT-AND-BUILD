@@ -8,6 +8,8 @@ function ParticipantDashboard() {
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
   const [activeTab, setActiveTab] = useState('overview');
   const [team, setTeam] = useState(null);
+  const [registrationChecked, setRegistrationChecked] = useState(false);
+  const [registrationError, setRegistrationError] = useState('');
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,11 +37,14 @@ function ParticipantDashboard() {
 
   async function loadData() {
     setLoading(true);
+    setRegistrationChecked(false);
+    setRegistrationError('');
     try {
       const response = await fetch(`${API_BASE}/api/teams/me`, { credentials: 'include' });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message || 'Failed to load your team');
-      const myTeam = body.team;
+      const myTeam = body.registered ? body.team : null;
+      setRegistrationChecked(true);
       if (myTeam) {
         setTeam(myTeam);
         setProjectTitle(myTeam.project_title || '');
@@ -68,7 +73,7 @@ function ParticipantDashboard() {
         setGithubLink(savedSubmission.repository_url || ''); setDemoLink(savedSubmission.deployed_url || '');
         setSelectedProblemStatement(savedSubmission.problem_statement_id);
       }
-    } catch (error) { showMessage(error.message, 'error'); }
+    } catch (error) { setRegistrationError(error.message || 'Unable to confirm registration status.'); showMessage(error.message, 'error'); }
     setLoading(false);
   }
 
@@ -242,7 +247,11 @@ function ParticipantDashboard() {
             <div className="dash-section">
               <h2 className="dash-title">My Team</h2>
 
-              {!team ? (
+              {registrationError ? (
+                <div className="dash-notice glass-card"><h3>Unable to verify your registration</h3><p>{registrationError}</p><button type="button" className="btn btn--secondary" onClick={loadData}>Try again</button></div>
+              ) : !registrationChecked ? (
+                <div className="dash-notice glass-card"><h3>Checking your registration…</h3><p>Please wait while we verify your team with the server.</p></div>
+              ) : !team ? (
                 <div className="dash-notice glass-card">
                   <h3>Team registration is managed by the Admin.</h3>
                   <p>Use the team login ID and password provided to your team. Your team workspace will appear here once it is registered.</p>
