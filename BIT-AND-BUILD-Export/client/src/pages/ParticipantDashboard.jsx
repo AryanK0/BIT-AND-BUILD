@@ -136,7 +136,7 @@ function ParticipantDashboard() {
     e.preventDefault();
     if (!presentationFile) { showMessage('Please select a file.', 'error'); return; }
     const allowedExtensions = /\.(pdf|ppt|pptx)$/i;
-    if (!allowedExtensions.test(presentationFile.name)) { showMessage('Unsupported file type. Choose a PDF, PPT, or PPTX file.', 'error'); return; }
+    if (!allowedExtensions.test(presentationFile.name) || /\.pdf$/i.test(presentationFile.name)) { showMessage('Unsupported file type. Choose a PPT or PPTX file.', 'error'); return; }
     if (presentationFile.size > 20 * 1024 * 1024) { showMessage('File is too large. The Round 1 limit is 20 MB.', 'error'); return; }
     setUploadingPresentation(true);
     try {
@@ -351,8 +351,8 @@ function ParticipantDashboard() {
                 <form className="dash-form glass-card" onSubmit={handlePresentationUpload}>
                   <h3>{team.presentation ? 'Replace Round 1 Upload' : 'Upload Round 1'}</h3>
                   {team.presentation ? <div className="dash-submitted-badge">Round 1 Uploaded ✓<br /><span>{team.presentation.originalFilename}</span><br /><a href={`${API_BASE}/api/presentations/me/file`} target="_blank" rel="noreferrer">View Round 1</a></div> : <p className="dash-field-hint">No Round 1 upload yet.</p>}
-                  <label className="dash-field"><span>PDF, PPT, or PPTX (max 20 MB)</span><input type="file" accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={(e) => setPresentationFile(e.target.files?.[0] || null)} required /></label>
-                  <button type="submit" className="btn btn--primary" disabled={uploadingPresentation}>{uploadingPresentation ? 'Uploading...' : team.presentation ? 'Replace Round 1 Upload' : 'Upload Round 1'}</button>
+                  <label className="dash-field"><span>One PPT or PPTX file (max 20 MB)</span><input type="file" accept=".ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={(e) => setPresentationFile(e.target.files?.[0] || null)} required /></label>
+                  <button type="submit" className="btn btn--primary" disabled={uploadingPresentation}>{uploadingPresentation ? 'Submitting PPT...' : team.presentation ? 'Replace PPT' : 'Submit PPT'}</button>
                 </form>
               )}
             </div>

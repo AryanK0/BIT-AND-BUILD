@@ -182,7 +182,7 @@ function JudgeDashboard() {
                     {selectedTeam.tech_stack && <p style={{marginTop: '0.25rem'}}><strong>Tech:</strong> {selectedTeam.tech_stack}</p>}
                     {selectedTeam.github_link && <p style={{marginTop: '0.25rem'}}>🔗 <a href={selectedTeam.github_link} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>{selectedTeam.github_link}</a></p>}
                     {selectedTeam.demo_link && <p style={{marginTop: '0.25rem'}}>🌐 <a href={selectedTeam.demo_link} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>{selectedTeam.demo_link}</a></p>}
-                    <div style={{marginTop: 'var(--space-4)'}}><h4>Round 1</h4>{selectedTeam.presentation_filename ? <p style={{marginTop: '0.25rem'}}>{selectedTeam.presentation_filename} · <a href={`${API_BASE}/api/judge/teams/${selectedTeam.id}/presentation`} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>View Round 1</a></p> : <p style={{color: 'var(--color-text-faint)'}}>No Round 1 upload yet.</p>}</div>
+                    <div style={{marginTop: 'var(--space-4)'}}><h4>Round 1 PPT</h4>{selectedTeam.presentation_filename ? <p style={{marginTop: '0.25rem'}}>{selectedTeam.presentation_filename} · <a href={`${API_BASE}/api/judge/teams/${selectedTeam.id}/presentation`} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>View PPT</a></p> : <p style={{color: 'var(--color-text-faint)'}}>No PPT submitted yet.</p>}</div>
                   </div>
 
                   <form className="dash-form glass-card" onSubmit={handleScore}>

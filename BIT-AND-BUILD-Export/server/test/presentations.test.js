@@ -11,8 +11,8 @@ const appSource = await fs.readFile(path.resolve(directory, '../src/app.js'), 'u
 const migration = await fs.readFile(path.resolve(directory, '../migrations/005_presentations.sql'), 'utf8');
 
 describe('presentation uploads', () => {
-  test('allows only PDF and PowerPoint files', () => {
-    expect(isAllowedPresentationFile({ originalname: 'final.pdf', mimetype: 'application/pdf' })).toBe(true);
+  test('allows only PowerPoint files', () => {
+    expect(isAllowedPresentationFile({ originalname: 'final.pdf', mimetype: 'application/pdf' })).toBe(false);
     expect(isAllowedPresentationFile({ originalname: 'final.pptx', mimetype: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })).toBe(true);
     expect(isAllowedPresentationFile({ originalname: 'malware.exe', mimetype: 'application/octet-stream' })).toBe(false);
     expect(isAllowedPresentationFile({ originalname: 'notes.txt', mimetype: 'text/plain' })).toBe(false);
