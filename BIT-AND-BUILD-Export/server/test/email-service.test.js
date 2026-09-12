@@ -32,13 +32,23 @@ describe('Resend email service', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  test('logs safe Resend validation-failure details', async () => {
-    const send = vi.fn().mockResolvedValue({ error: { name: 'validation_error', message: 'The sender domain is not verified', statusCode: 422, code: 'validation_error' } });
+  test('logs safe Resend validation-failure details and payload metadata', async () => {
+    const send = vi.fn().mockResolvedValue({ data: { id: null }, errors: [{ field: 'from', message: 'Sender domain is not verified' }], error: { name: 'validation_error', message: 'The sender domain is not verified', statusCode: 422, code: 'validation_error' } });
     const logger = { error: vi.fn() };
     const service = createEmailService({ apiKey: 'test-key', senderEmail: 'verified@example.com', ResendClient: makeClient(send), logger });
-    await expect(service.send({ to: 'leader@example.com', subject: 'Test', html: '<p>Test</p>' })).resolves.toEqual({ ok: false, code: emailErrorCodes.EMAIL_DELIVERY_ERROR });
-    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ provider: 'resend', providerErrorName: 'validation_error', providerErrorMessage: 'The sender domain is not verified', providerStatus: 422 }));
+    await expect(service.send({ to: 'leader@example.com', subject: 'Test', html: '<p>Test</p>' })).resolves.toMatchObject({ ok: false, code: emailErrorCodes.EMAIL_DELIVERY_ERROR, diagnostic: { providerErrorName: 'validation_error', providerStatus: 422 } });
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ provider: 'resend', providerErrorName: 'validation_error', providerErrorMessage: 'The sender domain is not verified', providerStatus: 422, providerResponseData: { id: null }, providerResponseErrors: [{ field: 'from', message: 'Sender domain is not verified' }], senderEmail: 'verified@example.com', recipientEmail: 'leader@example.com', subject: 'Test', payloadFieldTypes: { from: 'string', to: 'string', subject: 'string', html: 'string', text: 'undefined', replyTo: 'undefined' } }));
     expect(JSON.stringify(logger.error.mock.calls)).not.toContain('test-key');
+  });
+
+  test('handles an SDK exception and does not treat a response without a message ID as sent', async () => {
+    const logger = { error: vi.fn(), info: vi.fn() };
+    const thrown = new Error('Resend request failed');
+    const throwingService = createEmailService({ apiKey: 'test-key', senderEmail: 'verified@example.com', ResendClient: makeClient(vi.fn().mockRejectedValue(thrown)), logger });
+    await expect(throwingService.send({ to: 'leader@example.com', subject: 'Test', html: '<p>Test</p>' })).resolves.toMatchObject({ ok: false, code: emailErrorCodes.EMAIL_DELIVERY_ERROR, diagnostic: { providerErrorName: 'Error', providerErrorMessage: 'Resend request failed' } });
+
+    const emptyService = createEmailService({ apiKey: 'test-key', senderEmail: 'verified@example.com', ResendClient: makeClient(vi.fn().mockResolvedValue({ data: null, error: null })), logger });
+    await expect(emptyService.send({ to: 'leader@example.com', subject: 'Test', html: '<p>Test</p>' })).resolves.toMatchObject({ ok: false, code: emailErrorCodes.EMAIL_DELIVERY_ERROR, diagnostic: { providerErrorName: 'unexpected_response' } });
   });
 
   test('uses the Resend service payload for team credential emails', () => {

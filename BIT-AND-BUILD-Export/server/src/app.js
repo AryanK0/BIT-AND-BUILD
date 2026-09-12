@@ -111,7 +111,16 @@ export function createApp({ pool, config, logger = console, emailService } = {})
         logger.error?.({ event: 'team_credential_email_error', teamId: team.id, errorType: error?.name || 'Error', errorMessage: safeErrorMessage(error) });
         delivery = { ok: false, code: 'EMAIL_DELIVERY_ERROR' };
       }
-      if (!delivery.ok) logger.error?.({ event: 'team_credential_email_not_sent', teamId: team.id, code: delivery.code });
+      if (!delivery.ok) logger.error?.({
+        event: 'team_credential_email_not_sent',
+        teamId: team.id,
+        code: delivery.code,
+        providerErrorName: delivery.diagnostic?.providerErrorName,
+        providerErrorMessage: delivery.diagnostic?.providerErrorMessage,
+        providerStatus: delivery.diagnostic?.providerStatus,
+        providerResponseData: delivery.diagnostic?.providerResponseData,
+        providerResponseErrors: delivery.diagnostic?.providerResponseErrors,
+      });
       res.status(201).json({ team: { id: team.id, teamName: team.team_name, leaderName: team.leader_name, leaderEmail: team.leader_email, college: team.college }, credentials: { loginName }, credentialEmail: delivery.ok ? 'sent' : 'not_sent' });
     } catch (error) {
       if (client && !committed) await client.query('ROLLBACK').catch((rollbackError) => logger.error?.({ event: 'team_registration_rollback_error', errorType: rollbackError?.name || 'Error', errorMessage: safeErrorMessage(rollbackError) }));

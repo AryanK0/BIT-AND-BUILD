@@ -50,13 +50,14 @@ describe('team registration and transactional email delivery', () => {
   test('keeps the committed team and reports email delivery failure without leaking credentials', async () => {
     const pool = makePool();
     const logger = { error: vi.fn() };
-    const app = createApp({ pool, config, emailService: { send: vi.fn().mockResolvedValue({ ok: false, code: 'EMAIL_DELIVERY_ERROR' }) }, logger });
+    const app = createApp({ pool, config, emailService: { send: vi.fn().mockResolvedValue({ ok: false, code: 'EMAIL_DELIVERY_ERROR', diagnostic: { providerErrorName: 'validation_error', providerErrorMessage: 'Sender domain is not verified', providerStatus: 422, providerResponseData: null, providerResponseErrors: [{ field: 'from', message: 'Sender domain is not verified' }] } }) }, logger });
     const response = await register(app);
     expect(response.status).toBe(201);
     expect(response.body.credentialEmail).toBe('not_sent');
     expect(response.text).not.toContain(payload.password);
     expect(pool.queries).toContain('COMMIT');
     expect(JSON.stringify(logger.error.mock.calls)).not.toContain(payload.password);
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ event: 'team_credential_email_not_sent', providerErrorName: 'validation_error', providerStatus: 422 }));
   });
 
   test('rolls back database failures, returns a safe error, and redacts secrets from logs', async () => {

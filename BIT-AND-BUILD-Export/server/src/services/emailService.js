@@ -11,11 +11,24 @@ function normalizeEmail(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
+function isDisplayName(value) {
+  return typeof value === 'string' && /^[^<>\r\n]+$/.test(value.trim());
+}
+
 function safeProviderText(value) {
   return String(value || '')
     .replace(/re_[A-Za-z0-9_-]+/g, '[redacted]')
     .replace(/(?:api[_ -]?key|authorization|password)\s*[:=]\s*\S+/gi, (match) => `${match.split(/[:=]/)[0]}=[redacted]`)
     .slice(0, 500);
+}
+
+function safeProviderValue(value, depth = 0) {
+  if (value == null || typeof value === 'number' || typeof value === 'boolean') return value ?? null;
+  if (typeof value === 'string') return safeProviderText(value);
+  if (depth >= 3) return '[truncated]';
+  if (Array.isArray(value)) return value.slice(0, 10).map((item) => safeProviderValue(item, depth + 1));
+  if (typeof value === 'object') return Object.fromEntries(Object.entries(value).slice(0, 20).map(([key, item]) => [key, /api[_ -]?key|authorization|password|html|text/i.test(key) ? '[redacted]' : safeProviderValue(item, depth + 1)]));
+  return safeProviderText(value);
 }
 
 function providerErrorDetails(error) {
@@ -24,6 +37,29 @@ function providerErrorDetails(error) {
     providerErrorMessage: safeProviderText(error?.message || 'No provider error message'),
     providerStatus: error?.statusCode ?? error?.status ?? null,
     providerCode: safeProviderText(error?.code || ''),
+  };
+}
+
+function providerResponseDetails(response) {
+  return {
+    providerResponseData: safeProviderValue(response?.data),
+    providerResponseErrors: safeProviderValue(response?.errors ?? response?.error?.errors),
+  };
+}
+
+function payloadSummary({ from, to, subject, html, text }) {
+  return {
+    senderEmail: from.match(/<([^>]+)>$/)?.[1] || from,
+    recipientEmail: to,
+    subject,
+    payloadFieldTypes: {
+      from: typeof from,
+      to: typeof to,
+      subject: typeof subject,
+      html: typeof html,
+      text: typeof text,
+      replyTo: 'undefined',
+    },
   };
 }
 
@@ -55,7 +91,7 @@ export function createEmailService({
   ].filter(Boolean);
   const invalid = [
     normalizedSenderEmail && !isEmail(normalizedSenderEmail) && 'RESEND_SENDER_EMAIL',
-    !normalizedSenderName && 'RESEND_SENDER_NAME',
+    (!normalizedSenderName || !isDisplayName(normalizedSenderName)) && 'RESEND_SENDER_NAME',
   ].filter(Boolean);
 
   if (missing.length > 0 || invalid.length > 0) {
@@ -76,25 +112,38 @@ export function createEmailService({
     return { isConfigured: false, send: async () => ({ ok: false, code: EMAIL_CONFIGURATION_ERROR }) };
   }
   const from = `${normalizedSenderName} <${normalizedSenderEmail}>`;
+  logger.info?.({ event: 'email_service_configuration', senderEmail: normalizedSenderEmail, senderNameConfigured: true });
 
   return {
     isConfigured: true,
     async send({ to, subject, html, text }) {
       const recipient = normalizeEmail(to);
-      if (!isEmail(recipient) || typeof subject !== 'string' || !subject.trim() || typeof html !== 'string' || !html.trim()) {
+      const validText = text === undefined || (typeof text === 'string' && text.trim());
+      if (!isEmail(recipient) || typeof subject !== 'string' || !subject.trim() || typeof html !== 'string' || !html.trim() || !validText) {
         return { ok: false, code: 'INVALID_EMAIL_MESSAGE' };
       }
 
+      const emailPayload = { from, to: recipient, subject: subject.trim(), html, ...(text !== undefined ? { text } : {}) };
+      const summary = payloadSummary(emailPayload);
+      logger.info?.({ event: 'email_delivery_attempt', provider: 'resend', ...summary });
+
       try {
-        const response = await client.emails.send({ from, to: recipient, subject: subject.trim(), html, ...(text ? { text } : {}) });
+        const response = await client.emails.send(emailPayload);
         if (response?.error) {
-          logger.error?.({ event: 'email_delivery_error', provider: 'resend', ...providerErrorDetails(response.error) });
-          return { ok: false, code: EMAIL_DELIVERY_ERROR };
+          const diagnostic = { ...providerErrorDetails(response.error), ...providerResponseDetails(response) };
+          logger.error?.({ event: 'email_delivery_error', provider: 'resend', ...summary, ...diagnostic });
+          return { ok: false, code: EMAIL_DELIVERY_ERROR, diagnostic };
         }
-        return { ok: true, id: response?.data?.id };
+        if (!response?.data?.id) {
+          const diagnostic = { providerErrorName: 'unexpected_response', providerErrorMessage: 'Resend returned no message ID', providerStatus: null, providerCode: '', ...providerResponseDetails(response) };
+          logger.error?.({ event: 'email_delivery_error', provider: 'resend', ...summary, ...diagnostic });
+          return { ok: false, code: EMAIL_DELIVERY_ERROR, diagnostic };
+        }
+        return { ok: true, id: response.data.id };
       } catch (error) {
-        logger.error?.({ event: 'email_delivery_error', provider: 'resend', ...providerErrorDetails(error) });
-        return { ok: false, code: EMAIL_DELIVERY_ERROR };
+        const diagnostic = { ...providerErrorDetails(error), providerResponseData: safeProviderValue(error?.data), providerResponseErrors: safeProviderValue(error?.errors) };
+        logger.error?.({ event: 'email_delivery_error', provider: 'resend', ...summary, ...diagnostic });
+        return { ok: false, code: EMAIL_DELIVERY_ERROR, diagnostic };
       }
     },
   };
