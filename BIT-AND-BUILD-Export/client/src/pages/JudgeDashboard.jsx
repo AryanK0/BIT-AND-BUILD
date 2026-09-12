@@ -164,6 +164,31 @@ function JudgeDashboard() {
             </div>
           )}
 
+          {activeTab === 'presentations' && (
+            <div className="dash-section">
+              <h2 className="dash-title">Presentation Submissions</h2>
+              <p className="dash-field-hint">PPT files are reviewed separately from project submissions.</p>
+              {teams.filter((team) => team.presentation_filename).length === 0 ? (
+                <div className="dash-empty glass-card"><span className="dash-empty-icon">📊</span><p>No PPT submissions yet.</p></div>
+              ) : (
+                <div className="dash-table-wrap glass-card">
+                  <table className="dash-table">
+                    <thead><tr><th>Team</th><th>Team ID</th><th>Problem Statement</th><th>PPT Status</th><th>Action</th></tr></thead>
+                    <tbody>{teams.filter((team) => team.presentation_filename).map((team) => (
+                      <tr key={team.id}>
+                        <td><strong>{team.team_name}</strong></td>
+                        <td style={{ fontSize: 'var(--fs-micro)' }}>{team.id}</td>
+                        <td>{team.problem_statement_title || 'Not selected'}</td>
+                        <td><span className="dash-priority-badge dash-priority-badge--normal">PPT submitted</span></td>
+                        <td><a className="btn btn--secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} href={`${API_BASE}/api/judge/teams/${team.id}/presentation`} target="_blank" rel="noreferrer">View PPT</a></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {activeTab === 'scoring' && (
             <div className="dash-section">
               <h2 className="dash-title">Score Team</h2>
