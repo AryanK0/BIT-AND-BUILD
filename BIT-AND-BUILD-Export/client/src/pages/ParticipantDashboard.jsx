@@ -26,6 +26,8 @@ function ParticipantDashboard() {
   const [message, setMessage] = useState({ text: '', type: '' });
   const [selectedProblemStatement, setSelectedProblemStatement] = useState(null);
   const [problemStatements, setProblemStatements] = useState([]);
+  const [presentationFile, setPresentationFile] = useState(null);
+  const [uploadingPresentation, setUploadingPresentation] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -128,6 +130,23 @@ function ParticipantDashboard() {
       showMessage(err.message || 'Save failed', 'error');
     }
     setSaving(false);
+  }
+
+  async function handlePresentationUpload(e) {
+    e.preventDefault();
+    if (!presentationFile) { showMessage('Choose a PDF, PPT, or PPTX file first.', 'error'); return; }
+    setUploadingPresentation(true);
+    try {
+      const formData = new FormData();
+      formData.append('presentation', presentationFile);
+      const response = await fetch(`${API_BASE}/api/presentations`, { method: 'POST', credentials: 'include', body: formData });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Presentation upload failed');
+      setPresentationFile(null);
+      await loadData();
+      showMessage('Presentation uploaded successfully.');
+    } catch (error) { showMessage(error.message, 'error'); }
+    setUploadingPresentation(false);
   }
 
   return (
@@ -314,6 +333,20 @@ function ParticipantDashboard() {
                       {saving ? 'Submitting...' : '🚀 Submit Project'}
                     </button>
                   </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'presentation' && (
+            <div className="dash-section">
+              <h2 className="dash-title">Presentation</h2>
+              {!team ? <div className="dash-notice glass-card"><p>Your team must be registered before uploading a presentation.</p></div> : (
+                <form className="dash-form glass-card" onSubmit={handlePresentationUpload}>
+                  <h3>{team.presentation ? 'Replace Presentation' : 'Upload Presentation'}</h3>
+                  {team.presentation ? <div className="dash-submitted-badge">Presentation Uploaded ✓<br /><span>{team.presentation.originalFilename}</span><br /><a href={`${API_BASE}/api/presentations/me/file`} target="_blank" rel="noreferrer">View Presentation</a></div> : <p className="dash-field-hint">No presentation uploaded yet.</p>}
+                  <label className="dash-field"><span>PDF, PPT, or PPTX (max 20 MB)</span><input type="file" accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={(e) => setPresentationFile(e.target.files?.[0] || null)} required /></label>
+                  <button type="submit" className="btn btn--primary" disabled={uploadingPresentation}>{uploadingPresentation ? 'Uploading...' : team.presentation ? 'Replace Presentation' : 'Upload Presentation'}</button>
                 </form>
               )}
             </div>

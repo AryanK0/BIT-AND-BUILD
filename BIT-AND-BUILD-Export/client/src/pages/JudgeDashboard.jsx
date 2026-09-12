@@ -176,6 +176,7 @@ function JudgeDashboard() {
                     {selectedTeam.tech_stack && <p style={{marginTop: '0.25rem'}}><strong>Tech:</strong> {selectedTeam.tech_stack}</p>}
                     {selectedTeam.github_link && <p style={{marginTop: '0.25rem'}}>🔗 <a href={selectedTeam.github_link} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>{selectedTeam.github_link}</a></p>}
                     {selectedTeam.demo_link && <p style={{marginTop: '0.25rem'}}>🌐 <a href={selectedTeam.demo_link} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>{selectedTeam.demo_link}</a></p>}
+                    <div style={{marginTop: 'var(--space-4)'}}><h4>Presentation</h4>{selectedTeam.presentation_filename ? <p style={{marginTop: '0.25rem'}}>{selectedTeam.presentation_filename} · <a href={`${API_BASE}/api/judge/teams/${selectedTeam.id}/presentation`} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>View Presentation</a></p> : <p style={{color: 'var(--color-text-faint)'}}>No presentation uploaded.</p>}</div>
                   </div>
 
                   <form className="dash-form glass-card" onSubmit={handleScore}>

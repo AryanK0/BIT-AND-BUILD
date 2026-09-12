@@ -503,6 +503,7 @@ async function handleCopyJudgePassword() {
                       ) : (
                         <p style={{color: 'var(--color-text-faint)', fontStyle: 'italic'}}>No submission yet</p>
                       )}
+                      <div style={{marginTop: 'var(--space-4)'}}><h4 style={{fontSize: 'var(--fs-small)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)'}}>Presentation</h4>{expandedTeam.presentation ? <p>{expandedTeam.presentation.originalFilename} · <a href={`${API_BASE}/api/admin/teams/${expandedTeam.id}/presentation`} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>View Presentation</a></p> : <p style={{color: 'var(--color-text-faint)', fontStyle: 'italic'}}>No presentation uploaded.</p>}</div>
                     </div>
                   </div>
                   {expandedTeam.scores?.length > 0 && (

@@ -8,6 +8,7 @@ const NAV_ITEMS = {
     { id: 'overview', label: 'Overview', icon: '🏠' },
     { id: 'team', label: 'My Team', icon: '👥' },
     { id: 'submission', label: 'Submission', icon: '📦' },
+    { id: 'presentation', label: 'Presentation', icon: '📄' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
   ],
   judge: [
