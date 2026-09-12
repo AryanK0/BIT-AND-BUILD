@@ -32,36 +32,31 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (identifier, password, selectedRole) => {
     try {
+      let data;
       if (selectedRole === 'judge') {
-        const data = await api('/api/auth/judge/login', {
+        data = await api('/api/auth/judge/login', {
           method: 'POST',
           body: JSON.stringify({ judgeId: identifier, password }),
         });
-      setUser(data.user);
-setRole(data.user?.role || data.role);
-return { success: true };
-      }
-
-      if (selectedRole === 'organizer') {
-        const data = await api('/api/auth/organizer/login', {
+      } else if (selectedRole === 'organizer') {
+        data = await api('/api/auth/organizer/login', {
           method: 'POST',
           body: JSON.stringify({ email: identifier, password }),
         });
-setUser(data.user);
-setRole(data.user?.role || data.role);
-return { success: true };
-      }
-
-      if (selectedRole === 'participant') {
-        const data = await api('/api/auth/participant/login', {
+      } else if (selectedRole === 'participant') {
+        data = await api('/api/auth/participant/login', {
           method: 'POST', body: JSON.stringify({ identifier, password }),
         });
-        const u = data.user;
-        setUser(u); setRole(u.role);
-        return { success: true };
+      } else {
+        return { success: false, error: 'Unsupported login role.' };
       }
 
-      return { success: false, error: 'Unsupported login role.' };
+      if (data.token) {
+        localStorage.setItem('bitandbuild_session', data.token);
+      }
+      setUser(data.user);
+      setRole(data.user?.role || data.role);
+      return { success: true };
     } catch (error) {
       return { success: false, error: error.message || 'Login failed' };
     }
@@ -71,6 +66,7 @@ return { success: true };
 
   const logout = useCallback(async () => {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* local cleanup still happens */ }
+    localStorage.removeItem('bitandbuild_session');
     setUser(null); setRole(null);
   }, [role]);
 

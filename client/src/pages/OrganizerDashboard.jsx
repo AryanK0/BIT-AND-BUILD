@@ -542,7 +542,7 @@ async function handleCopyJudgePassword() {
                         <td>{t.team_members?.length || 0}</td>
                         <td>
                           <span className={`dash-priority-badge ${t.submission_status === 'submitted' ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>
-                            {t.submission_status === 'submitted' ? 'Submitted' : 'Pending'}
+                            {t.submission_status === 'submitted' ? 'Submitted' : 'Registered (Pending Submission)'}
                           </span>
                         </td>
                         <td>
