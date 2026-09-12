@@ -41,7 +41,7 @@ describe('presentation uploads', () => {
         if (sql === 'BEGIN' || sql === 'COMMIT') return { rows: [] };
         if (sql.startsWith('SELECT status')) return { rows: [] };
         if (sql.startsWith('SELECT stored_filename')) return { rows: [] };
-        if (sql.startsWith('INSERT INTO presentations')) return { rows: [{ original_filename: 'round-1.pdf', mime_type: 'application/pdf', uploaded_at: '2026-01-01T00:00:00.000Z' }] };
+        if (sql.startsWith('INSERT INTO presentations')) return { rows: [{ original_filename: 'round-1.pptx', mime_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', uploaded_at: '2026-01-01T00:00:00.000Z' }] };
         return { rows: [] };
       }),
       release: vi.fn(),
@@ -52,9 +52,9 @@ describe('presentation uploads', () => {
     };
     const app = createApp({ pool, config: { nodeEnv: 'test', frontendOrigin: 'http://localhost:5173', sessionCookieName: 'bb_session', sessionTtlHours: 8, uploadDir }, logger: { error: vi.fn() } });
     try {
-      const response = await request(app).post('/api/presentations').set('Cookie', 'bb_session=valid').attach('presentation', Buffer.from('%PDF-1.4'), { filename: 'round-1.pdf', contentType: 'application/pdf' });
+      const response = await request(app).post('/api/presentations').set('Cookie', 'bb_session=valid').attach('presentation', Buffer.from('pptx fixture'), { filename: 'round-1.pptx', contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
       expect(response.status).toBe(201);
-      expect(response.body).toEqual({ presentation: { originalFilename: 'round-1.pdf', mimeType: 'application/pdf', uploadedAt: '2026-01-01T00:00:00.000Z' } });
+      expect(response.body).toEqual({ presentation: { originalFilename: 'round-1.pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', uploadedAt: '2026-01-01T00:00:00.000Z' } });
       expect(client.query.mock.calls.some(([sql]) => sql.startsWith('INSERT INTO presentations'))).toBe(true);
       expect((await fs.readdir(uploadDir))).toHaveLength(1);
     } finally {

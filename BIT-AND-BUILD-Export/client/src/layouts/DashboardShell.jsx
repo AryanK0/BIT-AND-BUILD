@@ -14,9 +14,9 @@ const NAV_ITEMS = {
   ],
   judge: [
     { id: 'overview', label: 'Overview', icon: '🏠' },
-    { id: 'teams', label: 'All Teams', icon: '👥' },
+    { id: 'teams', label: 'Submissions', icon: '📦' },
     { id: 'presentations', label: 'Presentations', icon: '📊' },
-    { id: 'scoring', label: 'Scoring', icon: '⚖️' },
+    { id: 'scoring', label: 'Scores', icon: '⚖️' },
   ],
   organizer: [
     { id: 'judges', label: 'Judges', icon: '⚖️' },

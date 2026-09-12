@@ -11,8 +11,7 @@ const RUBRIC = [
   { key: 'applicability_scalability', name: 'Applicability & Scalability', weight: 15 },
   { key: 'ui_ux', name: 'UI/UX', weight: 10 },
   { key: 'bonus_features', name: 'Bonus Features', weight: 10 },
-  { key: 'presentation', name: 'Presentation', weight: 5 },
-  { key: 'work_distribution', name: 'Work Distribution', weight: 5 },
+  { key: 'work_distribution', name: 'Work Distribution', weight: 10 },
 ];
 
 const EMPTY_SCORES = Object.fromEntries(RUBRIC.map(({ key }) => [key, 0]));
@@ -37,9 +36,38 @@ function normalizeExistingScore(existingScore) {
     applicability_scalability: hasWeightedCriteria ? (existingScore.applicability_scalability ?? 0) : 0,
     ui_ux: hasWeightedCriteria ? (existingScore.ui_ux ?? 0) : (existingScore.design ?? 0),
     bonus_features: hasWeightedCriteria ? (existingScore.bonus_features ?? 0) : 0,
-    presentation: existingScore.presentation ?? 0,
     work_distribution: hasWeightedCriteria ? (existingScore.work_distribution ?? 0) : 0,
   };
+}
+
+function PresentationScore({ presentation, apiBase, onSaved, showMessage }) {
+  const [score, setScore] = useState(presentation.score ?? '');
+  const [comments, setComments] = useState(presentation.comments ?? '');
+  const [saving, setSaving] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    const numericScore = Number(score);
+    if (!Number.isInteger(numericScore) || numericScore < 0 || numericScore > 10) {
+      showMessage('Presentation score must be an integer from 0 to 10.', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      const response = await fetch(`${apiBase}/api/judge/presentations/${presentation.team_id}/score`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score: numericScore, comments }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to save presentation score');
+      showMessage('Presentation evaluation saved.');
+      await onSaved();
+    } catch (error) { showMessage(error.message, 'error'); }
+    setSaving(false);
+  }
+
+  return <form onSubmit={submit} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', minWidth: '14rem' }}>
+    <input aria-label={`Presentation score for ${presentation.team_name}`} type="number" min="0" max="10" step="1" value={score} onChange={(event) => setScore(event.target.value)} placeholder="0–10" style={{ width: '4.2rem' }} required />
+    <input aria-label={`Presentation comments for ${presentation.team_name}`} value={comments} onChange={(event) => setComments(event.target.value)} placeholder="Comments" style={{ width: '7rem' }} />
+    <button className="btn btn--secondary" style={{ padding: '0.4rem 0.55rem', fontSize: '0.75rem' }} disabled={saving}>{saving ? '…' : 'Save'}</button>
+  </form>;
 }
 
 function JudgeDashboard() {
@@ -47,6 +75,7 @@ function JudgeDashboard() {
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
   const [activeTab, setActiveTab] = useState('overview');
   const [teams, setTeams] = useState([]);
+  const [presentations, setPresentations] = useState([]);
   const [teamCount, setTeamCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -60,15 +89,18 @@ function JudgeDashboard() {
   async function loadData() {
     setLoading(true);
     try {
-      const [response, summaryResponse] = await Promise.all([
+      const [response, summaryResponse, presentationsResponse] = await Promise.all([
         fetch(`${API_BASE}/api/judge/submissions`, { credentials: 'include' }),
         fetch(`${API_BASE}/api/judge/teams-summary`, { credentials: 'include' }),
+        fetch(`${API_BASE}/api/judge/presentations`, { credentials: 'include' }),
       ]);
-      const [body, summary] = await Promise.all([response.json(), summaryResponse.json()]);
+      const [body, summary, presentationsBody] = await Promise.all([response.json(), summaryResponse.json(), presentationsResponse.json()]);
       if (!response.ok) throw new Error(body?.error?.message || 'Failed to load teams');
       if (!summaryResponse.ok) throw new Error(summary?.error?.message || 'Failed to load team count');
+      if (!presentationsResponse.ok) throw new Error(presentationsBody?.error?.message || 'Failed to load presentations');
       setTeams((body.submissions || []).map((item) => ({ ...item, id: item.team_id || item.registered_team_id, project_title: item.title, project_description: item.description, github_link: item.repository_url, demo_link: item.deployed_url, submission_status: item.status, score: item.score_id ? item : null })));
       setTeamCount(Number(summary.teamCount) || 0);
+      setPresentations(presentationsBody.presentations || []);
     } catch (error) { showMessage(error.message, 'error'); }
     setLoading(false);
   }
@@ -142,7 +174,7 @@ function JudgeDashboard() {
 
           {activeTab === 'teams' && (
             <div className="dash-section">
-              <h2 className="dash-title">All Teams & Round 2</h2>
+              <h2 className="dash-title">Project Submissions</h2>
               <div className="dash-table-wrap glass-card">
                 <table className="dash-table">
                   <thead><tr><th>Team</th><th>Leader</th><th>College</th><th>Project</th><th>Status</th><th>Members</th><th>Action</th></tr></thead>
@@ -154,7 +186,7 @@ function JudgeDashboard() {
                         <td>{t.college || '—'}</td>
                         <td>{t.project_title || <em style={{color: 'var(--color-text-faint)'}}>Not submitted</em>}</td>
                         <td><span className={`dash-priority-badge ${t.submission_status === 'submitted' ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>{t.submission_status === 'submitted' ? '✅ Submitted' : '⏳ Pending'}</span></td>
-                        <td>{t.member_count || 0}</td>
+                        <td>{t.team_members?.length ? t.team_members.map((member) => member.member_name).join(', ') : `${t.member_count || 0} members`}</td>
                         <td>{t.submission_status === 'submitted' && <button className="btn btn--secondary" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem'}} onClick={() => selectTeamForScoring(t)}>Score</button>}</td>
                       </tr>
                     ))}
@@ -168,19 +200,19 @@ function JudgeDashboard() {
             <div className="dash-section">
               <h2 className="dash-title">Presentation Submissions</h2>
               <p className="dash-field-hint">PPT files are reviewed separately from project submissions.</p>
-              {teams.filter((team) => team.presentation_filename).length === 0 ? (
+              {presentations.length === 0 ? (
                 <div className="dash-empty glass-card"><span className="dash-empty-icon">📊</span><p>No PPT submissions yet.</p></div>
               ) : (
                 <div className="dash-table-wrap glass-card">
                   <table className="dash-table">
-                    <thead><tr><th>Team</th><th>Team ID</th><th>Problem Statement</th><th>PPT Status</th><th>Action</th></tr></thead>
-                    <tbody>{teams.filter((team) => team.presentation_filename).map((team) => (
-                      <tr key={team.id}>
-                        <td><strong>{team.team_name}</strong></td>
-                        <td style={{ fontSize: 'var(--fs-micro)' }}>{team.id}</td>
-                        <td>{team.problem_statement_title || 'Not selected'}</td>
+                    <thead><tr><th>Team & Members</th><th>Uploaded</th><th>PPT Status</th><th>Evaluation</th><th>Action</th></tr></thead>
+                    <tbody>{presentations.map((presentation) => (
+                      <tr key={presentation.team_id}>
+                        <td><strong>{presentation.team_name}</strong><br /><small>{presentation.team_members?.map((member) => member.member_name).join(', ')}</small></td>
+                        <td>{new Date(presentation.uploaded_at).toLocaleString()}</td>
                         <td><span className="dash-priority-badge dash-priority-badge--normal">PPT submitted</span></td>
-                        <td><a className="btn btn--secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} href={`${API_BASE}/api/judge/teams/${team.id}/presentation`} target="_blank" rel="noreferrer">View PPT</a></td>
+                        <td><PresentationScore presentation={presentation} apiBase={API_BASE} onSaved={loadData} showMessage={showMessage} /></td>
+                        <td><a className="btn btn--secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} href={`${API_BASE}/api/judge/teams/${presentation.team_id}/presentation`} target="_blank" rel="noreferrer">View / Download</a></td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -195,7 +227,7 @@ function JudgeDashboard() {
               {!selectedTeam ? (
                 <div className="dash-empty glass-card">
                   <span className="dash-empty-icon">⚖️</span>
-                  <p>Select a team from the "All Teams" tab to score.</p>
+                  <p>Select a project from the "Submissions" tab to score.</p>
                   <button className="btn btn--secondary" onClick={() => setActiveTab('teams')}>Go to Teams</button>
                 </div>
               ) : (
@@ -207,7 +239,6 @@ function JudgeDashboard() {
                     {selectedTeam.tech_stack && <p style={{marginTop: '0.25rem'}}><strong>Tech:</strong> {selectedTeam.tech_stack}</p>}
                     {selectedTeam.github_link && <p style={{marginTop: '0.25rem'}}>🔗 <a href={selectedTeam.github_link} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>{selectedTeam.github_link}</a></p>}
                     {selectedTeam.demo_link && <p style={{marginTop: '0.25rem'}}>🌐 <a href={selectedTeam.demo_link} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>{selectedTeam.demo_link}</a></p>}
-                    <div style={{marginTop: 'var(--space-4)'}}><h4>Round 1 PPT</h4>{selectedTeam.presentation_filename ? <p style={{marginTop: '0.25rem'}}>{selectedTeam.presentation_filename} · <a href={`${API_BASE}/api/judge/teams/${selectedTeam.id}/presentation`} target="_blank" rel="noreferrer" style={{color: 'var(--color-accent-blue)'}}>View PPT</a></p> : <p style={{color: 'var(--color-text-faint)'}}>No PPT submitted yet.</p>}</div>
                   </div>
 
                   <form className="dash-form glass-card" onSubmit={handleScore}>

@@ -80,13 +80,18 @@ function ParticipantDashboard() {
   async function handleAddMember(e) {
     e.preventDefault();
     if (!team) return;
-    if ((team.team_members?.length || 0) >= 3) {
+    if ((team.team_members?.length || 0) >= 4) {
       showMessage('Maximum 4 members (including leader) allowed', 'error');
       return;
     }
     setSaving(true);
     try {
-      showMessage('Team members are managed by Admin.', 'error');
+      const response = await fetch(`${API_BASE}/api/teams/me/members`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: memberName, email: memberEmail, role: memberRole }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Failed to add member');
+      setMemberName(''); setMemberEmail(''); setMemberRole('');
+      await loadData();
+      showMessage('Team member added.');
     } catch (err) {
       showMessage(err.message || 'Failed to add member', 'error');
     }
@@ -96,7 +101,10 @@ function ParticipantDashboard() {
   async function handleRemoveMember(id) {
     setSaving(true);
     try {
-      showMessage('Team members are managed by Admin.', 'error');
+      const response = await fetch(`${API_BASE}/api/teams/me/members/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (response.status !== 204) { const body = await response.json(); throw new Error(body?.error?.message || 'Failed to remove member'); }
+      await loadData();
+      showMessage('Team member removed.');
     } catch (err) {
       showMessage(err.message || 'Failed to remove', 'error');
     }
@@ -261,14 +269,14 @@ function ParticipantDashboard() {
                               {m.member_role && <span className="dash-member-role">{m.member_role}</span>}
                               {m.member_email && <span className="dash-member-email">{m.member_email}</span>}
                             </div>
-                            <button className="dash-remove-btn" onClick={() => handleRemoveMember(m.id)} disabled={saving}>✕</button>
+                            {user?.email?.toLowerCase() === team.leader_email?.toLowerCase() && m.member_role !== 'Leader' && <button className="dash-remove-btn" onClick={() => handleRemoveMember(m.id)} disabled={saving}>✕</button>}
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
 
-                  {(team.team_members?.length || 0) < 3 && (
+                  {user?.email?.toLowerCase() === team.leader_email?.toLowerCase() && (team.team_members?.length || 0) < 4 && (
                     <form className="dash-form glass-card" onSubmit={handleAddMember}>
                       <h3>Add Team Member</h3>
                       <div className="dash-form-grid">

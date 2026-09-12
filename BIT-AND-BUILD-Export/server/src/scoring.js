@@ -7,8 +7,7 @@ export const RUBRIC = [
   { key: 'applicability_scalability', weight: 15 },
   { key: 'ui_ux', weight: 10 },
   { key: 'bonus_features', weight: 10 },
-  { key: 'presentation', weight: 5 },
-  { key: 'work_distribution', weight: 5 },
+  { key: 'work_distribution', weight: 10 },
 ];
 
 export const scoreRequestSchema = z.object({
@@ -19,8 +18,8 @@ export const scoreRequestSchema = z.object({
   applicability_scalability: z.number().int().min(0).max(10),
   ui_ux: z.number().int().min(0).max(10),
   bonus_features: z.number().int().min(0).max(10),
-  presentation: z.number().int().min(0).max(10),
-  work_distribution: z.number().int().min(0).max(10),
+  presentation: z.number().int().min(0).max(10).optional().default(0),
+  work_distribution: z.number().int().min(0).max(10).optional().default(0),
   comments: z.string().max(5000).optional().default(''),
 }).strict();
 
