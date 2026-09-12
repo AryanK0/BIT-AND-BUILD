@@ -43,6 +43,15 @@ describe('presentation uploads', () => {
     expect(judgeDashboardSource).not.toContain('target="_blank" rel="noreferrer">View / Download');
   });
 
+  test('keeps the judge download state in the dashboard scope so submitted rows cannot crash rendering', () => {
+    const scoreComponent = judgeDashboardSource.slice(judgeDashboardSource.indexOf('function PresentationScore'), judgeDashboardSource.indexOf('function JudgeDashboard'));
+    const dashboardComponent = judgeDashboardSource.slice(judgeDashboardSource.indexOf('function JudgeDashboard'));
+    expect(scoreComponent).not.toContain('setDownloadingPresentationId');
+    expect(dashboardComponent).toContain('const [downloadingPresentationId, setDownloadingPresentationId] = useState(null)');
+    expect(judgeDashboardSource).toContain('presentationsError ?');
+    expect(judgeDashboardSource).toContain('presentationsLoading ?');
+  });
+
   test('accepts the presentation multipart field and returns the Round 1 metadata', async () => {
     const uploadDir = path.join(process.cwd(), '.test-private-uploads');
     const teamId = '11111111-1111-4111-8111-111111111111';

@@ -40,11 +40,14 @@ function normalizeExistingScore(existingScore) {
   };
 }
 
+function memberNames(members) {
+  return Array.isArray(members) ? members.map((member) => member?.member_name).filter(Boolean).join(', ') : '';
+}
+
 function PresentationScore({ presentation, apiBase, onSaved, showMessage }) {
   const [score, setScore] = useState(presentation.score ?? '');
   const [comments, setComments] = useState(presentation.comments ?? '');
   const [saving, setSaving] = useState(false);
-  const [downloadingPresentationId, setDownloadingPresentationId] = useState(null);
 
   async function submit(event) {
     event.preventDefault();
@@ -84,26 +87,35 @@ function JudgeDashboard() {
   const [comments, setComments] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
+  const [downloadingPresentationId, setDownloadingPresentationId] = useState(null);
+  const [presentationsLoading, setPresentationsLoading] = useState(true);
+  const [presentationsError, setPresentationsError] = useState('');
 
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
     setLoading(true);
+    setPresentationsLoading(true);
+    setPresentationsError('');
     try {
       const [response, summaryResponse, presentationsResponse] = await Promise.all([
         fetch(`${API_BASE}/api/judge/submissions`, { credentials: 'include' }),
         fetch(`${API_BASE}/api/judge/teams-summary`, { credentials: 'include' }),
         fetch(`${API_BASE}/api/judge/presentations`, { credentials: 'include' }),
       ]);
-      const [body, summary, presentationsBody] = await Promise.all([response.json(), summaryResponse.json(), presentationsResponse.json()]);
+      const [body, summary, presentationsBody] = await Promise.all([response.json().catch(() => ({})), summaryResponse.json().catch(() => ({})), presentationsResponse.json().catch(() => ({}))]);
       if (!response.ok) throw new Error(body?.error?.message || 'Failed to load teams');
       if (!summaryResponse.ok) throw new Error(summary?.error?.message || 'Failed to load team count');
-      if (!presentationsResponse.ok) throw new Error(presentationsBody?.error?.message || 'Failed to load presentations');
-      setTeams((body.submissions || []).map((item) => ({ ...item, id: item.team_id || item.registered_team_id, project_title: item.title, project_description: item.description, github_link: item.repository_url, demo_link: item.deployed_url, submission_status: item.status, score: item.score_id ? item : null })));
+      setTeams((Array.isArray(body.submissions) ? body.submissions : []).map((item) => ({ ...item, id: item.team_id || item.registered_team_id, project_title: item.title, project_description: item.description, github_link: item.repository_url, demo_link: item.deployed_url, submission_status: item.status, score: item.score_id ? item : null })));
       setTeamCount(Number(summary.teamCount) || 0);
-      setPresentations(presentationsBody.presentations || []);
-    } catch (error) { showMessage(error.message, 'error'); }
-    setLoading(false);
+      if (!presentationsResponse.ok) {
+        setPresentations([]);
+        setPresentationsError(presentationsBody?.error?.message || 'Failed to load presentations.');
+      } else {
+        setPresentations(Array.isArray(presentationsBody.presentations) ? presentationsBody.presentations : []);
+      }
+    } catch (error) { setPresentationsError(error.message || 'Failed to load presentations.'); showMessage(error.message, 'error'); }
+    finally { setPresentationsLoading(false); setLoading(false); }
   }
 
   function showMessage(text, type = 'success') {
@@ -211,7 +223,7 @@ function JudgeDashboard() {
                         <td>{t.college || '—'}</td>
                         <td>{t.project_title || <em style={{color: 'var(--color-text-faint)'}}>Not submitted</em>}</td>
                         <td><span className={`dash-priority-badge ${t.submission_status === 'submitted' ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>{t.submission_status === 'submitted' ? '✅ Submitted' : '⏳ Pending'}</span></td>
-                        <td>{t.team_members?.length ? t.team_members.map((member) => member.member_name).join(', ') : `${t.member_count || 0} members`}</td>
+                        <td>{memberNames(t.team_members) || `${t.member_count || 0} members`}</td>
                         <td>{t.submission_status === 'submitted' && <button className="btn btn--secondary" style={{padding: '0.4rem 0.8rem', fontSize: '0.8rem'}} onClick={() => selectTeamForScoring(t)}>Score</button>}</td>
                       </tr>
                     ))}
@@ -225,7 +237,11 @@ function JudgeDashboard() {
             <div className="dash-section">
               <h2 className="dash-title">Presentation Submissions</h2>
               <p className="dash-field-hint">PPT files are reviewed separately from project submissions.</p>
-              {presentations.length === 0 ? (
+              {presentationsLoading ? (
+                <div className="dash-loading"><div className="spinner" /></div>
+              ) : presentationsError ? (
+                <div className="dash-notice glass-card"><h3>Unable to load presentations</h3><p>{presentationsError}</p><button type="button" className="btn btn--secondary" onClick={loadData}>Try again</button></div>
+              ) : presentations.length === 0 ? (
                 <div className="dash-empty glass-card"><span className="dash-empty-icon">📊</span><p>No teams are registered yet.</p></div>
               ) : (
                 <div className="dash-table-wrap glass-card">
@@ -233,7 +249,7 @@ function JudgeDashboard() {
                     <thead><tr><th>Team & Members</th><th>Uploaded</th><th>PPT Status</th><th>Evaluation</th><th>Action</th></tr></thead>
                     <tbody>{presentations.map((presentation) => (
                       <tr key={presentation.team_id}>
-                        <td><strong>{presentation.team_name}</strong><br /><small>{presentation.team_members?.map((member) => member.member_name).join(', ')}</small></td>
+                        <td><strong>{presentation.team_name || 'Unnamed team'}</strong><br /><small>{memberNames(presentation.team_members)}</small></td>
                         <td>{presentation.uploaded_at ? new Date(presentation.uploaded_at).toLocaleString() : '—'}</td>
                         <td><span className={`dash-priority-badge ${presentation.original_filename ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>{presentation.original_filename ? 'PPT submitted' : 'No presentation submitted'}</span></td>
                         <td>{presentation.original_filename ? <PresentationScore presentation={presentation} apiBase={API_BASE} onSaved={loadData} showMessage={showMessage} /> : '—'}</td>
