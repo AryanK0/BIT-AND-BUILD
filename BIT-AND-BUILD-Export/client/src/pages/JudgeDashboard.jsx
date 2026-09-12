@@ -201,7 +201,7 @@ function JudgeDashboard() {
               <h2 className="dash-title">Presentation Submissions</h2>
               <p className="dash-field-hint">PPT files are reviewed separately from project submissions.</p>
               {presentations.length === 0 ? (
-                <div className="dash-empty glass-card"><span className="dash-empty-icon">📊</span><p>No PPT submissions yet.</p></div>
+                <div className="dash-empty glass-card"><span className="dash-empty-icon">📊</span><p>No teams are registered yet.</p></div>
               ) : (
                 <div className="dash-table-wrap glass-card">
                   <table className="dash-table">
@@ -209,10 +209,10 @@ function JudgeDashboard() {
                     <tbody>{presentations.map((presentation) => (
                       <tr key={presentation.team_id}>
                         <td><strong>{presentation.team_name}</strong><br /><small>{presentation.team_members?.map((member) => member.member_name).join(', ')}</small></td>
-                        <td>{new Date(presentation.uploaded_at).toLocaleString()}</td>
-                        <td><span className="dash-priority-badge dash-priority-badge--normal">PPT submitted</span></td>
-                        <td><PresentationScore presentation={presentation} apiBase={API_BASE} onSaved={loadData} showMessage={showMessage} /></td>
-                        <td><a className="btn btn--secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} href={`${API_BASE}/api/judge/teams/${presentation.team_id}/presentation`} target="_blank" rel="noreferrer">View / Download</a></td>
+                        <td>{presentation.uploaded_at ? new Date(presentation.uploaded_at).toLocaleString() : '—'}</td>
+                        <td><span className={`dash-priority-badge ${presentation.original_filename ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>{presentation.original_filename ? 'PPT submitted' : 'No presentation submitted'}</span></td>
+                        <td>{presentation.original_filename ? <PresentationScore presentation={presentation} apiBase={API_BASE} onSaved={loadData} showMessage={showMessage} /> : '—'}</td>
+                        <td>{presentation.original_filename ? <a className="btn btn--secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} href={`${API_BASE}/api/judge/teams/${presentation.team_id}/presentation`} target="_blank" rel="noreferrer">View / Download</a> : '—'}</td>
                       </tr>
                     ))}</tbody>
                   </table>
