@@ -14,7 +14,8 @@ import { createSession, deleteSession, getSession } from './auth/sessions.js';
 import { scoreRequestSchema, toDatabaseScore } from './scoring.js';
 import { decryptRecoverablePassword, encryptRecoverablePassword } from './security/teamCredentialRecovery.js';
 
-const registerTeam = z.object({ teamName: z.string().trim().min(1).max(160), leaderName: z.string().trim().min(1).max(160), leaderEmail: z.string().trim().email(), college: z.string().trim().max(160).optional().or(z.literal('')), loginName: z.string().trim().min(3).max(80).regex(/^[a-zA-Z0-9-]+$/), password: z.string().min(8).max(256) }).strict();
+const registerTeam = z.object({ teamName: z.string().trim().min(1).max(160), leaderName: z.string().trim().min(1).max(160), leaderEmail: z.string().trim().email(), college: z.string().trim().max(160).optional().or(z.literal('')), teamColour: z.string().trim().min(1).max(40).optional().or(z.literal('')), loginName: z.string().trim().min(3).max(80).regex(/^[a-zA-Z0-9-]+$/), password: z.string().min(8).max(256) }).strict();
+const googleSheetImport = z.object({ sheetUrl: z.string().trim().url().max(2048) }).strict();
 const participantLogin = z.object({ identifier: z.string().trim().min(1).max(80), password: z.string().min(1).max(256) }).strict();
 const problemStatement = z.object({ title: z.string().trim().min(1).max(200), description: z.string().trim().min(1).max(10000), isActive: z.boolean().optional() }).strict();
 const submission = z.object({ problemStatementId: z.string().uuid(), projectTitle: z.string().trim().min(1).max(200), description: z.string().trim().min(1).max(10000), techStack: z.string().trim().max(1000).optional().or(z.literal('')), repositoryUrl: z.string().url().max(2048).optional().or(z.literal('')), deployedUrl: z.string().url().max(2048).optional().or(z.literal('')), status: z.enum(['draft', 'submitted', 'final']).optional() }).strict();
@@ -40,7 +41,7 @@ async function serviceUser(pool, { email, name, role, password }) {
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   return (await pool.query(`INSERT INTO users (email, display_name, role, password_hash) VALUES ($1,$2,$3,$4) ON CONFLICT (email) DO UPDATE SET display_name=EXCLUDED.display_name, role=EXCLUDED.role, password_hash=EXCLUDED.password_hash, enabled=TRUE, updated_at=NOW() RETURNING id,email,display_name,role,team_id`, [norm(email), name, role, passwordHash])).rows[0];
 }
-function mapTeam(row) { return { id: row.id, team_name: row.team_name, leader_name: row.leader_name, leader_email: row.leader_email, college: row.college, login_name: row.login_name, created_at: row.created_at, updated_at: row.updated_at, project_title: row.project_title, project_description: row.project_description, tech_stack: row.tech_stack, github_link: row.github_link, demo_link: row.demo_link, submission_status: row.submission_status || 'not_submitted', presentation: row.presentation || null, team_members: row.team_members || [], scores: row.scores || [] }; }
+function mapTeam(row) { return { id: row.id, team_name: row.team_name, leader_name: row.leader_name, leader_email: row.leader_email, college: row.college, team_colour: row.team_colour, login_name: row.login_name, created_at: row.created_at, updated_at: row.updated_at, project_title: row.project_title, project_description: row.project_description, tech_stack: row.tech_stack, github_link: row.github_link, demo_link: row.demo_link, submission_status: row.submission_status || 'not_submitted', presentation: row.presentation || null, team_members: row.team_members || [], scores: row.scores || [] }; }
 export function generateJudgePassword() { return Array.from({ length: 6 }, () => JUDGE_PASSWORD_ALPHABET[crypto.randomInt(JUDGE_PASSWORD_ALPHABET.length)]).join(''); }
 export function isAllowedPresentationFile(file) { return Boolean(file) && PRESENTATION_EXTENSIONS.has(path.extname(file.originalname || '').toLowerCase()) && PRESENTATION_MIME_TYPES.has(file.mimetype); }
 function safePresentationName(filename) { return path.basename(filename).replace(/[^A-Za-z0-9._() -]/g, '_'); }
@@ -98,7 +99,7 @@ export function createApp({ pool, config, logger = console } = {}) {
       stage = 'password_hash';
       const passwordHash = await argon2.hash(input.password, { type: argon2.argon2id });
       stage = 'insert_team';
-      const team = (await client.query('INSERT INTO teams (team_name,leader_name,leader_email,college) VALUES ($1,$2,$3,$4) RETURNING *', [input.teamName, input.leaderName, norm(input.leaderEmail), input.college || null])).rows[0];
+      const team = (await client.query('INSERT INTO teams (team_name,leader_name,leader_email,college,team_colour) VALUES ($1,$2,$3,$4,$5) RETURNING *', [input.teamName, input.leaderName, norm(input.leaderEmail), input.college || null, input.teamColour || null])).rows[0];
       stage = 'insert_team_member';
       await client.query("INSERT INTO team_members (team_id,name,email,role) VALUES ($1,$2,$3,'Leader')", [team.id, input.leaderName, norm(input.leaderEmail)]);
       stage = 'insert_participant';
@@ -132,22 +133,33 @@ export function createApp({ pool, config, logger = console } = {}) {
   // A compact, judge-safe aggregate is intentionally separate from the richer
   // team/submission view. COUNT always returns exactly one row, including zero.
   app.get('/api/judge/teams-summary', ...role('judge'), async (_req, res, next) => { try { const result = await pool.query('SELECT COUNT(*)::int AS team_count FROM teams'); res.json({ teamCount: result.rows[0]?.team_count ?? 0 }); } catch (error) { next(error); } });
-  app.post('/api/admin/teams/import', ...role('organizer'), teamImportUpload.single('file'), async (req, res, next) => { let client; try {
+  const importTeams = async (req, res, next) => { let client; try {
     if (!config.teamCredentialEncryptionKey) return res.status(503).json({ error: { code: 'CREDENTIAL_RECOVERY_NOT_CONFIGURED', message: 'Team credential recovery is not configured' } });
     if (!req.file?.buffer) return res.status(400).json(fail(400));
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer', dense: false });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = sheet ? XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false }) : [];
+    const importSheet = workbook.SheetNames.map((name) => {
+      const sheet = workbook.Sheets[name];
+      const values = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+      const headerIndex = values.findIndex((row) => {
+        const headers = row.map(normalizedColumn);
+        return (headers.includes('teamname') || headers.includes('team')) && (headers.includes('teamleader') || headers.includes('leadername') || headers.includes('leader'));
+      });
+      return headerIndex >= 0 ? { sheet, headerIndex } : null;
+    }).find(Boolean);
+    if (!importSheet) return res.status(400).json({ error: { code: 'IMPORT_COLUMNS_NOT_FOUND', message: 'A sheet must contain Team Name and Team Leader or Leader Name columns' } });
+    const rows = importSheet ? XLSX.utils.sheet_to_json(importSheet.sheet, { range: importSheet.headerIndex, defval: '', raw: false }) : [];
     const invalidRows = []; const candidates = []; const seen = new Set();
     rows.forEach((row, index) => {
       const fields = Object.fromEntries(Object.entries(row).map(([key, value]) => [normalizedColumn(key), String(value || '').trim()]));
       const teamName = fields.teamname || fields.team || '';
       const leaderName = fields.teamleader || fields.leadername || fields.leader || '';
-      const leaderEmail = fields.leaderemail || fields.email || '';
+      const leaderEmail = fields.leaderemail || fields.candidateemail || fields.email || '';
+      const teamColour = fields.colour || fields.color || fields.pen || '';
       const nameKey = normalizeTeamName(teamName);
-      if (!teamName || !leaderName || teamName.length > 160 || leaderName.length > 160) return invalidRows.push({ row: index + 2, reason: 'Team Name and Leader Name are required and must be at most 160 characters' });
-      if (seen.has(nameKey)) return invalidRows.push({ row: index + 2, reason: 'Duplicate team name in import file' });
-      seen.add(nameKey); candidates.push({ row: index + 2, teamName: teamName.replace(/\s+/g, ' '), leaderName: leaderName.replace(/\s+/g, ' '), leaderEmail: isEmail(leaderEmail) ? norm(leaderEmail) : null, nameKey });
+      const sourceRow = index + importSheet.headerIndex + 2;
+      if (!teamName || !leaderName || teamName.length > 160 || leaderName.length > 160) return invalidRows.push({ row: sourceRow, reason: 'Team Name and Leader Name are required and must be at most 160 characters' });
+      if (seen.has(nameKey)) return invalidRows.push({ row: sourceRow, reason: 'Duplicate team name in import file' });
+      seen.add(nameKey); candidates.push({ row: sourceRow, teamName: teamName.replace(/\s+/g, ' '), leaderName: leaderName.replace(/\s+/g, ' '), leaderEmail: isEmail(leaderEmail) ? norm(leaderEmail) : null, teamColour: teamColour.replace(/\s+/g, ' ').slice(0, 40) || null, nameKey });
     });
     requirePool(pool); client = await pool.connect(); await client.query('BEGIN');
     await client.query('LOCK TABLE teams IN SHARE ROW EXCLUSIVE MODE');
@@ -156,7 +168,7 @@ export function createApp({ pool, config, logger = console } = {}) {
     for (const candidate of candidates) {
       if (existing.has(candidate.nameKey)) { duplicates.push({ row: candidate.row, teamName: candidate.teamName }); continue; }
       const loginName = importedLoginName(candidate.teamName); const password = generateImportedPassword(); const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
-      const team = (await client.query('INSERT INTO teams (team_name,leader_name,leader_email,college) VALUES ($1,$2,$3,$4) RETURNING *', [candidate.teamName, candidate.leaderName, candidate.leaderEmail || `${loginName}@teams.bitandbuild.local`, null])).rows[0];
+      const team = (await client.query('INSERT INTO teams (team_name,leader_name,leader_email,college,team_colour) VALUES ($1,$2,$3,$4,$5) RETURNING *', [candidate.teamName, candidate.leaderName, candidate.leaderEmail || `${loginName}@teams.bitandbuild.local`, null, candidate.teamColour])).rows[0];
       await client.query("INSERT INTO team_members (team_id,name,email,role) VALUES ($1,$2,$3,'Leader')", [team.id, candidate.leaderName, candidate.leaderEmail]);
       await client.query("INSERT INTO users (email,display_name,role,password_hash,team_id) VALUES ($1,$2,'participant',$3,$4)", [candidate.leaderEmail || `${loginName}@teams.bitandbuild.local`, candidate.leaderName, passwordHash, team.id]);
       await client.query('INSERT INTO team_credentials (team_id,login_name,password_hash,encrypted_password) VALUES ($1,$2,$3,$4)', [team.id, loginName, passwordHash, encryptRecoverablePassword(password, config.teamCredentialEncryptionKey)]);
@@ -164,7 +176,21 @@ export function createApp({ pool, config, logger = console } = {}) {
     }
     await client.query('COMMIT'); logger.info?.({ event: 'team_import_completed', imported: imported.length, duplicates: duplicates.length, invalid: invalidRows.length });
     res.status(201).json({ totalRows: rows.length, imported, skippedDuplicates: duplicates, invalidRows });
-  } catch (error) { if (client) await client.query('ROLLBACK').catch(() => {}); next(error); } finally { client?.release(); } });
+  } catch (error) { if (client) await client.query('ROLLBACK').catch(() => {}); next(error); } finally { client?.release(); } };
+  app.post('/api/admin/teams/import', ...role('organizer'), teamImportUpload.single('file'), importTeams);
+  app.post('/api/admin/teams/import-google-sheet', ...role('organizer'), async (req, res, next) => { try {
+    const { sheetUrl } = googleSheetImport.parse(req.body);
+    const source = new URL(sheetUrl);
+    const match = source.hostname === 'docs.google.com' && source.pathname.match(/^\/spreadsheets\/d\/([A-Za-z0-9_-]+)(?:\/|$)/);
+    if (!match) return res.status(400).json({ error: { code: 'INVALID_GOOGLE_SHEET_URL', message: 'Provide a Google Sheets URL' } });
+    const response = await fetch(`https://docs.google.com/spreadsheets/d/${match[1]}/export?format=xlsx`, { signal: AbortSignal.timeout(15000) });
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (!response.ok || contentLength > 5 * 1024 * 1024) return res.status(400).json({ error: { code: 'GOOGLE_SHEET_UNAVAILABLE', message: 'The Google Sheet must be publicly viewable and no larger than 5 MB' } });
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length === 0 || buffer.length > 5 * 1024 * 1024) return res.status(400).json(fail(400));
+    req.file = { buffer, originalname: 'google-sheet.xlsx' };
+    return importTeams(req, res, next);
+  } catch (error) { next(error); } });
   app.get('/api/admin/teams/:teamId/credentials', ...role('organizer'), async (req, res, next) => { try { if (!config.teamCredentialEncryptionKey) return res.status(503).json({ error: { code: 'CREDENTIAL_RECOVERY_NOT_CONFIGURED', message: 'Team credential recovery is not configured' } }); const record = (await pool.query('SELECT t.team_name,c.login_name,c.encrypted_password FROM teams t JOIN team_credentials c ON c.team_id=t.id WHERE t.id=$1', [req.params.teamId])).rows[0]; if (!record) return res.status(404).json(fail(404)); if (!record.encrypted_password) return res.status(409).json({ error: { code: 'CREDENTIAL_NOT_RECOVERABLE', message: 'This existing team password cannot be recovered securely' } }); const password = decryptRecoverablePassword(record.encrypted_password, config.teamCredentialEncryptionKey); logger.info?.({ event: 'team_credential_viewed', actorId: req.session.id, teamId: req.params.teamId }); res.json({ credentials: { loginName: record.login_name, password } }); } catch (error) { next(error); } });
   app.delete('/api/teams/:teamId', ...role('organizer'), async (req, res, next) => { let client; try { requirePool(pool); client = await pool.connect(); await client.query('BEGIN'); const team = (await client.query('SELECT id,team_name FROM teams WHERE id=$1 FOR UPDATE', [req.params.teamId])).rows[0]; if (!team) { await client.query('ROLLBACK'); return res.status(404).json(fail(404)); } /* Participant users must be removed before their team: the schema intentionally requires every participant to own a team. Sessions cascade from users; team members, credentials, submissions, and scores cascade from teams. */ await client.query("DELETE FROM users WHERE team_id=$1 AND role='participant'", [team.id]); await client.query('DELETE FROM teams WHERE id=$1', [team.id]); await client.query('COMMIT'); res.json({ deletedTeam: { id: team.id, teamName: team.team_name } }); } catch (error) { if (client) await client.query('ROLLBACK').catch(() => {}); next(error); } finally { client?.release(); } });
   app.get('/api/teams/me', ...role('participant'), async (req, res, next) => { try { const result = await pool.query(`${participantTeamSelect} WHERE t.id=$1`, [req.session.teamId]); if (!result.rows[0]) return res.status(404).json(fail(404)); res.json({ team: mapTeam(result.rows[0]) }); } catch (error) { next(error); } });

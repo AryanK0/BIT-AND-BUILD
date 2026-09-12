@@ -22,6 +22,14 @@ function getScoreTotal(score) {
   return (score.innovation + score.technical + score.design + score.presentation) * 2.5;
 }
 
+function colourBadgeStyle(colour) {
+  const palette = {
+    pink: { background: 'rgba(255, 105, 180, 0.18)', borderColor: 'rgba(255, 105, 180, 0.5)', color: '#ffb6d9' },
+    orange: { background: 'rgba(255, 145, 77, 0.18)', borderColor: 'rgba(255, 145, 77, 0.5)', color: '#ffc08f' },
+  };
+  return palette[String(colour || '').trim().toLowerCase()] || { background: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.2)', color: 'var(--color-text-muted)' };
+}
+
 const SCHEDULE = [
   { time: '9:00 AM', event: 'Check-in & Registration', day: 'Day 1', status: 'upcoming' },
   { time: '10:00 AM', event: 'Opening Ceremony', day: 'Day 1', status: 'upcoming' },
@@ -48,7 +56,7 @@ function OrganizerDashboard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
-  const [teamForm, setTeamForm] = useState({ teamName: '', leaderName: '', leaderEmail: '', college: '' });
+  const [teamForm, setTeamForm] = useState({ teamName: '', leaderName: '', leaderEmail: '', college: '', teamColour: '' });
   const [issuedCredentials, setIssuedCredentials] = useState(null);
   const [judgePassword, setJudgePassword] = useState('');
 const [generatingJudgePassword, setGeneratingJudgePassword] = useState(false);
@@ -62,6 +70,7 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
   // Expanded team detail
   const [expandedTeam, setExpandedTeam] = useState(null);
   const [importFile, setImportFile] = useState(null);
+  const [googleSheetUrl, setGoogleSheetUrl] = useState('');
   const [importingTeams, setImportingTeams] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
   const [revealedCredentials, setRevealedCredentials] = useState(null);
@@ -130,12 +139,12 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
       return;
     }
     try {
-      const response = await fetch(`${API_BASE}/api/teams`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamName: teamForm.teamName, leaderName: teamForm.leaderName, leaderEmail, college: teamForm.college, loginName, password }) });
+      const response = await fetch(`${API_BASE}/api/teams`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamName: teamForm.teamName, leaderName: teamForm.leaderName, leaderEmail, college: teamForm.college, teamColour: teamForm.teamColour, loginName, password }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message || 'Failed to register team');
       await loadData();
       setIssuedCredentials({ teamName: teamForm.teamName, loginName, password });
-      setTeamForm({ teamName: '', leaderName: '', leaderEmail: '', college: '' });
+      setTeamForm({ teamName: '', leaderName: '', leaderEmail: '', college: '', teamColour: '' });
       showMessage('Team registered. Share these credentials securely.', 'success');
     } catch (err) {
       showMessage(err.message || 'Failed to register team', 'error');
@@ -158,6 +167,21 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
       await loadData();
       showMessage(`Imported ${body.imported?.length || 0} team(s).`);
     } catch (error) { showMessage(error.message || 'Team import failed', 'error'); }
+    setImportingTeams(false);
+  }
+
+  async function handleGoogleSheetImport(e) {
+    e.preventDefault();
+    if (!googleSheetUrl.trim()) return showMessage('Paste a Google Sheets URL first.', 'error');
+    setImportingTeams(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/teams/import-google-sheet`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sheetUrl: googleSheetUrl.trim() }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || 'Google Sheets import failed');
+      setImportSummary(body);
+      await loadData();
+      showMessage(`Imported ${body.imported?.length || 0} team(s) from Google Sheets.`);
+    } catch (error) { showMessage(error.message || 'Google Sheets import failed', 'error'); }
     setImportingTeams(false);
   }
 
@@ -462,6 +486,7 @@ async function handleCopyJudgePassword() {
                   <label className="dash-field"><span>Team Leader *</span><input value={teamForm.leaderName} onChange={(e) => setTeamForm({ ...teamForm, leaderName: e.target.value })} placeholder="Miles Morales" required /></label>
                   <label className="dash-field"><span>Leader Email *</span><input type="email" value={teamForm.leaderEmail} onChange={(e) => setTeamForm({ ...teamForm, leaderEmail: e.target.value })} placeholder="leader@university.edu" required /></label>
                   <label className="dash-field"><span>College</span><input value={teamForm.college} onChange={(e) => setTeamForm({ ...teamForm, college: e.target.value })} placeholder="Your College" /></label>
+                  <label className="dash-field"><span>Colour Group</span><input value={teamForm.teamColour} onChange={(e) => setTeamForm({ ...teamForm, teamColour: e.target.value })} placeholder="Pink or Orange" maxLength={40} /></label>
                 </div>
                 <p className="dash-field-hint">A unique team login ID and password will be generated after registration.</p>
                 <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Registering...' : '🎯 Register Team'}</button>
@@ -469,9 +494,16 @@ async function handleCopyJudgePassword() {
 
               <form className="dash-form glass-card" onSubmit={handleImportTeams} style={{ marginTop: 'var(--space-4)' }}>
                 <h3>Import Teams from Excel</h3>
-                <p className="dash-field-hint">Expected columns: Team Name and Team Leader or Leader Name. Leader Email is optional; extra columns are ignored.</p>
+                <p className="dash-field-hint">Expected columns: Team Name, Team Leader or Leader Name, and optionally Colour/Color. Leader Email is optional; extra columns are ignored.</p>
                 <label className="dash-field"><span>Excel file (.xlsx or .xls)</span><input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={(e) => setImportFile(e.target.files?.[0] || null)} required /></label>
                 <button type="submit" className="btn btn--primary" disabled={importingTeams}>{importingTeams ? 'Importing...' : 'Import Teams'}</button>
+              </form>
+
+              <form className="dash-form glass-card" onSubmit={handleGoogleSheetImport} style={{ marginTop: 'var(--space-4)' }}>
+                <h3>Import Teams from Google Sheets</h3>
+                <p className="dash-field-hint">Use a publicly viewable Google Sheet. The matching sheet can use TEAM NAME, LEADER NAME, CONTACT NO., and COLOUR columns.</p>
+                <label className="dash-field"><span>Google Sheets URL</span><input type="url" value={googleSheetUrl} onChange={(e) => setGoogleSheetUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/..." required /></label>
+                <button type="submit" className="btn btn--primary" disabled={importingTeams}>{importingTeams ? 'Importing...' : 'Import from Google Sheets'}</button>
               </form>
 
               {importSummary && <div className="dash-notice glass-card"><h3>Import Summary</h3><p>Total rows: {importSummary.totalRows} · Imported: {importSummary.imported?.length || 0} · Duplicates: {importSummary.skippedDuplicates?.length || 0} · Invalid: {importSummary.invalidRows?.length || 0}</p>{importSummary.invalidRows?.length > 0 && <ul>{importSummary.invalidRows.map((item) => <li key={`${item.row}-${item.reason}`}>Row {item.row}: {item.reason}</li>)}</ul>}{importSummary.skippedDuplicates?.length > 0 && <p className="dash-field-hint">Duplicates skipped: {importSummary.skippedDuplicates.map((item) => `row ${item.row} (${item.teamName})`).join(', ')}</p>}</div>}
@@ -493,6 +525,7 @@ async function handleCopyJudgePassword() {
                       <th>Team Name</th>
                       <th>Leader</th>
                       <th>Login ID</th>
+                      <th>Colour</th>
                       <th>Email</th>
                       <th>College</th>
                       <th>Members</th>
@@ -508,6 +541,7 @@ async function handleCopyJudgePassword() {
                         <td><strong>{t.team_name}</strong></td>
                         <td>{t.leader_name}</td>
                         <td style={{fontSize: 'var(--fs-micro)'}}>{t.login_name || '—'}</td>
+                        <td>{t.team_colour ? <span className="dash-priority-badge" style={colourBadgeStyle(t.team_colour)}>{t.team_colour}</span> : '—'}</td>
                         <td style={{fontSize: 'var(--fs-micro)'}}>{t.leader_email}</td>
                         <td>{t.college || '—'}</td>
                         <td>{(t.team_members?.length || 0) + 1}</td>
