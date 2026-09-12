@@ -11,6 +11,9 @@ const environmentSchema = z.object({
   ORGANIZER_EMAIL: z.string().email().default('admin@bitandbuild.com'),
   ORGANIZER_PASSWORD: z.string().min(8).default('organizer2026'),
   JUDGE_ID: z.string().min(3).default('JUDGE-001'),
+  RESEND_API_KEY: z.string().trim().min(1).optional(),
+  RESEND_SENDER_EMAIL: z.string().trim().email().optional(),
+  RESEND_SENDER_NAME: z.string().trim().min(1).max(160).default('BIT AND BUILD'),
 }).strict();
 
 export function loadConfig(environment = process.env) {
@@ -25,6 +28,9 @@ export function loadConfig(environment = process.env) {
     ORGANIZER_EMAIL: environment.ORGANIZER_EMAIL,
     ORGANIZER_PASSWORD: environment.ORGANIZER_PASSWORD,
     JUDGE_ID: environment.JUDGE_ID,
+    RESEND_API_KEY: environment.RESEND_API_KEY,
+    RESEND_SENDER_EMAIL: environment.RESEND_SENDER_EMAIL,
+    RESEND_SENDER_NAME: environment.RESEND_SENDER_NAME,
   });
 
   return {
@@ -38,6 +44,9 @@ export function loadConfig(environment = process.env) {
     organizerEmail: values.ORGANIZER_EMAIL,
     organizerPassword: values.ORGANIZER_PASSWORD,
     judgeId: values.JUDGE_ID,
+    resendApiKey: values.RESEND_API_KEY,
+    resendSenderEmail: values.RESEND_SENDER_EMAIL,
+    resendSenderName: values.RESEND_SENDER_NAME,
   };
 }
 
