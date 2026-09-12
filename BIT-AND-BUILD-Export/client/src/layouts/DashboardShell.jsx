@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import BackgroundEffects from '../components/BackgroundEffects.jsx';
@@ -31,6 +32,11 @@ function DashboardShell({ role, roleLabel, activeTab, onTabChange, children }) {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const navItems = NAV_ITEMS[role] || [];
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('bit-and-build-sidebar-collapsed') === 'true');
+
+  useEffect(() => {
+    localStorage.setItem('bit-and-build-sidebar-collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   async function handleLogout() {
     await logout();
@@ -38,16 +44,27 @@ function DashboardShell({ role, roleLabel, activeTab, onTabChange, children }) {
   }
 
   return (
-    <div className={`dashboard-shell dashboard-shell--${role}`}>
+    <div className={`dashboard-shell dashboard-shell--${role} ${sidebarCollapsed ? 'dashboard-shell--sidebar-collapsed' : ''}`}>
       <BackgroundEffects variant="dashboard" />
-      <aside className="dashboard-shell__sidebar">
+      <aside className="dashboard-shell__sidebar" aria-label="Dashboard navigation">
         <div className="dashboard-shell__sidebar-top">
-          <Link to="/" className="dashboard-shell__wordmark">BIT <span>&amp;</span> BUILD</Link>
+          <div className="dashboard-shell__brand-row">
+            <Link to="/" className="dashboard-shell__wordmark" aria-label="Bit and Build home">BIT <span>&amp;</span> BUILD</Link>
+            <button
+              type="button"
+              className="dashboard-shell__sidebar-toggle"
+              onClick={() => setSidebarCollapsed(true)}
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+            >
+              <span aria-hidden="true">‹</span>
+            </button>
+          </div>
           <span className={`dashboard-shell__badge dashboard-shell__badge--${role}`}>{roleLabel}</span>
         </div>
         <nav className="dashboard-shell__nav">
           {navItems.map((item) => (
-            <button key={item.id} className={`dashboard-shell__nav-item ${activeTab === item.id ? 'dashboard-shell__nav-item--active' : ''}`} onClick={() => onTabChange(item.id)}>
+            <button key={item.id} className={`dashboard-shell__nav-item ${activeTab === item.id ? 'dashboard-shell__nav-item--active' : ''}`} onClick={() => onTabChange(item.id)} title={sidebarCollapsed ? item.label : undefined}>
               <span className="dashboard-shell__nav-icon">{item.icon}</span>
               <span className="dashboard-shell__nav-label">{item.label}</span>
             </button>
@@ -64,6 +81,19 @@ function DashboardShell({ role, roleLabel, activeTab, onTabChange, children }) {
           <button className="dashboard-shell__logout" onClick={handleLogout}>🚪 Logout</button>
         </div>
       </aside>
+
+      {sidebarCollapsed && (
+        <button
+          type="button"
+          className="dashboard-shell__sidebar-reopen"
+          onClick={() => setSidebarCollapsed(false)}
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+        >
+          <span aria-hidden="true">›</span>
+          <span className="dashboard-shell__sidebar-reopen-label">Menu</span>
+        </button>
+      )}
 
       <header className="dashboard-shell__mobile-header">
         <Link to="/" className="dashboard-shell__wordmark">BIT <span>&amp;</span> BUILD</Link>
