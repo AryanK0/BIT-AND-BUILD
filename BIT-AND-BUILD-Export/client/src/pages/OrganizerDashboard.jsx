@@ -32,6 +32,7 @@ const SCHEDULE = [
   { time: '10:00 AM', event: 'Demo & Judging', day: 'Day 2', status: 'upcoming' },
   { time: '12:00 PM', event: 'Awards Ceremony', day: 'Day 2', status: 'upcoming' },
 ];
+const TEAM_PASSWORD_MIN_LENGTH = 8;
 
 function OrganizerDashboard() {
   const { user } = useAuth();
@@ -106,7 +107,7 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
 
   function createPassword(teamName) {
     const slug = teamName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'Build';
-    return `${slug}@${Math.floor(1000 + Math.random() * 9000)}`;
+    return `${slug}@${Math.floor(1000 + Math.random() * 9000)}`.padEnd(TEAM_PASSWORD_MIN_LENGTH, '0');
   }
 
   async function handleRegisterTeam(e) {
@@ -119,6 +120,11 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
     setSaving(true);
     const loginName = createLoginName(teamForm.teamName);
     const password = createPassword(teamForm.teamName);
+    if (password.length < TEAM_PASSWORD_MIN_LENGTH) {
+      showMessage(`Unable to generate a secure team password. Please try again; passwords must be at least ${TEAM_PASSWORD_MIN_LENGTH} characters.`, 'error');
+      setSaving(false);
+      return;
+    }
     try {
       const response = await fetch(`${API_BASE}/api/teams`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamName: teamForm.teamName, leaderName: teamForm.leaderName, leaderEmail, college: teamForm.college, loginName, password }) });
       const body = await response.json();
