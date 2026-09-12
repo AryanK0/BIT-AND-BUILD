@@ -111,11 +111,16 @@ const [judgePasswordCopied, setJudgePasswordCopied] = useState(false);
 
   async function handleRegisterTeam(e) {
     e.preventDefault();
+    const leaderEmail = teamForm.leaderEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(leaderEmail)) {
+      showMessage('Enter a valid leader email address, for example leader@university.edu.', 'error');
+      return;
+    }
     setSaving(true);
     const loginName = createLoginName(teamForm.teamName);
     const password = createPassword(teamForm.teamName);
     try {
-      const response = await fetch(`${API_BASE}/api/teams`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamName: teamForm.teamName, leaderName: teamForm.leaderName, leaderEmail: teamForm.leaderEmail, college: teamForm.college, loginName, password }) });
+      const response = await fetch(`${API_BASE}/api/teams`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamName: teamForm.teamName, leaderName: teamForm.leaderName, leaderEmail, college: teamForm.college, loginName, password }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message || 'Failed to register team');
       await loadData();
