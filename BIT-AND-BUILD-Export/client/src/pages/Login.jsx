@@ -32,7 +32,7 @@ function Login() {
             className="login-page__highlights"
             aria-label="Portal features"
           >
-            <span>01 <small>Collaborate</small></span>
+            <span>01 <small>Collab</small></span>
             <span>02 <small>Submit</small></span>
             <span>03 <small>Win</small></span>
           </div>
