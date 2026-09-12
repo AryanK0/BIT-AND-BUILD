@@ -59,6 +59,13 @@ describe('Admin team credentials', () => {
 });
 
 describe('Admin Excel import', () => {
+  test('explains that import requires the server encryption key, not Google credentials', async () => {
+    const app = createApp({ pool: poolFor('organizer', async () => ({ rows: [] })), config: { ...config, teamCredentialEncryptionKey: undefined }, logger: { error: vi.fn() } });
+    const response = await request(app).post('/api/admin/teams/import').set('Cookie', 'bb_session=valid');
+    expect(response.status).toBe(503);
+    expect(response.body.error).toEqual({ code: 'TEAM_CREDENTIAL_ENCRYPTION_KEY_REQUIRED', message: 'Team import requires server-side credential encryption to be configured' });
+  });
+
   test('generates unique, cryptographically sourced import passwords with at least eight characters', () => {
     const passwords = new Set(Array.from({ length: 20 }, generateImportedPassword));
     expect(passwords.size).toBe(20);

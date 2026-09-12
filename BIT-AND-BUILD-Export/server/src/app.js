@@ -134,7 +134,7 @@ export function createApp({ pool, config, logger = console } = {}) {
   // team/submission view. COUNT always returns exactly one row, including zero.
   app.get('/api/judge/teams-summary', ...role('judge'), async (_req, res, next) => { try { const result = await pool.query('SELECT COUNT(*)::int AS team_count FROM teams'); res.json({ teamCount: result.rows[0]?.team_count ?? 0 }); } catch (error) { next(error); } });
   const importTeams = async (req, res, next) => { let client; try {
-    if (!config.teamCredentialEncryptionKey) return res.status(503).json({ error: { code: 'CREDENTIAL_RECOVERY_NOT_CONFIGURED', message: 'Team credential recovery is not configured' } });
+    if (!config.teamCredentialEncryptionKey) return res.status(503).json({ error: { code: 'TEAM_CREDENTIAL_ENCRYPTION_KEY_REQUIRED', message: 'Team import requires server-side credential encryption to be configured' } });
     if (!req.file?.buffer) return res.status(400).json(fail(400));
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer', dense: false });
     const importSheet = workbook.SheetNames.map((name) => {
