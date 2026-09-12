@@ -44,6 +44,7 @@ function PresentationScore({ presentation, apiBase, onSaved, showMessage }) {
   const [score, setScore] = useState(presentation.score ?? '');
   const [comments, setComments] = useState(presentation.comments ?? '');
   const [saving, setSaving] = useState(false);
+  const [downloadingPresentationId, setDownloadingPresentationId] = useState(null);
 
   async function submit(event) {
     event.preventDefault();
@@ -150,6 +151,30 @@ function JudgeDashboard() {
     setSaving(false);
   }
 
+  async function downloadPresentation(presentation) {
+    setDownloadingPresentationId(presentation.team_id);
+    try {
+      const response = await fetch(`${API_BASE}/api/judge/teams/${presentation.team_id}/presentation`, { credentials: 'include' });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.error?.message || 'Failed to download presentation.');
+      }
+      const blob = await response.blob();
+      const extension = presentation.original_filename?.toLowerCase().endsWith('.ppt') ? '.ppt' : '.pptx';
+      const filename = `${String(presentation.team_name || 'team').replace(/[^A-Za-z0-9._() -]/g, '_')}-presentation${extension}`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      showMessage('Presentation download started.');
+    } catch (error) { showMessage(error.message || 'Failed to download presentation.', 'error'); }
+    setDownloadingPresentationId(null);
+  }
+
   return (
     <DashboardShell role="judge" roleLabel="Judge" activeTab={activeTab} onTabChange={setActiveTab}>
       {message.text && <div className={`dash-message dash-message--${message.type}`}>{message.text}</div>}
@@ -212,7 +237,7 @@ function JudgeDashboard() {
                         <td>{presentation.uploaded_at ? new Date(presentation.uploaded_at).toLocaleString() : '—'}</td>
                         <td><span className={`dash-priority-badge ${presentation.original_filename ? 'dash-priority-badge--normal' : 'dash-priority-badge--urgent'}`}>{presentation.original_filename ? 'PPT submitted' : 'No presentation submitted'}</span></td>
                         <td>{presentation.original_filename ? <PresentationScore presentation={presentation} apiBase={API_BASE} onSaved={loadData} showMessage={showMessage} /> : '—'}</td>
-                        <td>{presentation.original_filename ? <a className="btn btn--secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} href={`${API_BASE}/api/judge/teams/${presentation.team_id}/presentation`} target="_blank" rel="noreferrer">View / Download</a> : '—'}</td>
+                        <td>{presentation.original_filename ? <button type="button" className="btn btn--secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={() => downloadPresentation(presentation)} disabled={downloadingPresentationId === presentation.team_id}>{downloadingPresentationId === presentation.team_id ? 'Downloading…' : 'Download PPT'}</button> : '—'}</td>
                       </tr>
                     ))}</tbody>
                   </table>
